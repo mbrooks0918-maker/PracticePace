@@ -2088,19 +2088,25 @@ function renderVideos() {
     const isYT = v.url.includes('youtube') || v.url.includes('youtu.be');
     const isHudl = v.url.includes('hudl.com');
     const typeLabel = isYT ? '▶ YouTube' : isHudl ? '▶ Hudl' : '▶ Video';
+    const safeId = v.id;
     card.innerHTML = '<div class="vid-title-row">'
       + '<div style="display:flex;flex-direction:column;flex:1;min-width:0">'
       + '<div class="vid-title">' + v.name + '</div>'
-      + '<div class="vid-url">' + typeLabel + ' · ' + v.url + '</div>'
+      + '<div class="vid-url">' + typeLabel + '</div>'
       + '</div>'
       + '</div>'
       + '<div class="vid-actions">'
-      + '<button class="btn btn-primary btn-sm" onclick="playVideo(' + v.id + ')">Play</button>'
-      + '<button class="btn btn-ghost btn-sm" onclick="window.open('' + v.url.replace(/'/g,"\'") + '','_blank')">Open</button>'
-      + '<button class="btn btn-danger btn-sm" onclick="deleteVideo(' + v.id + ')">✕</button>'
+      + '<button class="btn btn-primary btn-sm" onclick="playVideo(' + safeId + ')">Play</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="openVideo(' + safeId + ')">Open</button>'
+      + '<button class="btn btn-danger btn-sm" onclick="deleteVideo(' + safeId + ')">✕</button>'
       + '</div>';
     el.appendChild(card);
   });
+}
+
+function openVideo(id) {
+  const v = videos.find(v => v.id === id);
+  if (v) window.open(v.url, '_blank');
 }
 
 // ── INIT ──
