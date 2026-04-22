@@ -578,8 +578,6 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
 
     <!-- SCOREBOARD -->
     <div class="pane" id="pane-scoreboard">
-
-      <!-- SPORT SELECTOR -->
       <div id="sbSportSelector" style="display:block">
         <div class="sec-label">Choose scoreboard type</div>
         <div class="sb-selector">
@@ -596,237 +594,192 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
         </div>
       </div>
 
-      <!-- FOOTBALL SCOREBOARD -->
       <div id="sbFootball" style="display:none">
         <div class="sb-back-btn" onclick="showSbSelector()">
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="16,2 4,10 16,18"/></svg>
-          Change sport
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="16,2 4,10 16,18"/></svg> Change sport
         </div>
-
-      <!-- SCOREBOARD DISPLAY -->
-      <div class="sb-wrap" style="min-height:75vh;display:flex;flex-direction:column;justify-content:center">
-        <div class="sb-main">
-          <div class="sb-team">
-            <div class="sb-team-name home" id="sbHomeName">AGGIES</div>
-            <div class="sb-score home" id="sbHomeScore">0</div>
-            <div class="sb-timeouts" id="sbHomeTimeouts"></div>
+        <div class="sb-wrap" style="min-height:75vh;display:flex;flex-direction:column;justify-content:center">
+          <div class="sb-main" style="flex:1">
+            <div class="sb-team">
+              <div class="sb-team-name home" id="sbHomeName">AGGIES</div>
+              <div class="sb-score home" id="sbHomeScore">0</div>
+              <div class="sb-timeouts" id="sbHomeTimeouts"></div>
+            </div>
+            <div class="sb-center">
+              <div class="sb-qtr" id="sbQtrLabel">1ST QUARTER</div>
+              <div class="sb-clock" id="sbClock">15:00</div>
+              <div class="sb-poss" id="sbPoss">▶</div>
+            </div>
+            <div class="sb-team">
+              <div class="sb-team-name" id="sbAwayName">VISITOR</div>
+              <div class="sb-score" id="sbAwayScore">0</div>
+              <div class="sb-timeouts" id="sbAwayTimeouts"></div>
+            </div>
           </div>
-          <div class="sb-center">
-            <div class="sb-qtr" id="sbQtrLabel">1ST QUARTER</div>
-            <div class="sb-clock" id="sbClock">15:00</div>
-            <div class="sb-poss" id="sbPoss">▶</div>
+          <div class="sb-strip">
+            <div class="sb-stat"><div class="sb-stat-label">Down</div><div class="sb-stat-val red" id="sbDown">1ST</div></div>
+            <div class="sb-stat"><div class="sb-stat-label">Distance</div><div class="sb-stat-val" id="sbDist">& 10</div></div>
+            <div class="sb-stat"><div class="sb-stat-label">Ball on</div><div class="sb-stat-val" id="sbYardline">35</div></div>
+            <div class="sb-stat"><div class="sb-stat-label">Play clock</div><div class="sb-stat-val" id="sbPlayClock">40</div></div>
           </div>
-          <div class="sb-team">
-            <div class="sb-team-name" id="sbAwayName">VISITOR</div>
-            <div class="sb-score" id="sbAwayScore">0</div>
-            <div class="sb-timeouts" id="sbAwayTimeouts"></div>
-          </div>
-        </div>
-        <div class="sb-strip">
-          <div class="sb-stat">
-            <div class="sb-stat-label">Down</div>
-            <div class="sb-stat-val red" id="sbDown">1ST</div>
-          </div>
-          <div class="sb-stat">
-            <div class="sb-stat-label">Distance</div>
-            <div class="sb-stat-val" id="sbDist">&amp; 10</div>
-          </div>
-          <div class="sb-stat">
-            <div class="sb-stat-label">Ball on</div>
-            <div class="sb-stat-val" id="sbYardline">35</div>
-          </div>
-          <div class="sb-stat">
-            <div class="sb-stat-label">Play clock</div>
-            <div class="sb-stat-val" id="sbPlayClock">40</div>
+          <div class="sb-situation">
+            <div class="sb-sit-label">Situation</div>
+            <div class="sb-sit-val" id="sbSituation">2-Minute Offense</div>
           </div>
         </div>
-        <div class="sb-situation">
-          <div class="sb-sit-label">Situation</div>
-          <div class="sb-sit-val" id="sbSituation">2-Minute Offense</div>
+        <div class="sb-controls">
+          <div class="sb-ctrl-row">
+            <button class="btn btn-start" id="sbStartBtn" onclick="sbHandleStart()" style="min-width:100px;font-size:15px">
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="4,2 18,10 4,18"/></svg> Start
+            </button>
+            <button class="btn btn-pause" id="sbPauseBtn" onclick="sbHandlePause()" style="display:none;min-width:100px;font-size:15px">
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><rect x="3" y="2" width="5" height="16" rx="1.5"/><rect x="12" y="2" width="5" height="16" rx="1.5"/></svg> Pause
+            </button>
+            <button class="btn btn-ghost" onclick="sbReset()">Reset</button>
+            <button class="btn btn-ghost" onclick="sbNextDown()">Next down</button>
+            <button class="btn btn-ghost" onclick="sbTouchdown()">TD +6</button>
+            <button class="btn btn-ghost" onclick="sbFieldGoal()">FG +3</button>
+            <button class="btn btn-ghost" onclick="sbSafety()">Safety</button>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-label">Quarter:</div>
+            <button class="btn btn-qtr btn-sm active-qtr" id="sbQ1" onclick="sbSetQtr(1)">1st</button>
+            <button class="btn btn-qtr btn-sm" id="sbQ2" onclick="sbSetQtr(2)">2nd</button>
+            <button class="btn btn-qtr btn-sm" id="sbQ3" onclick="sbSetQtr(3)">3rd</button>
+            <button class="btn btn-qtr btn-sm" id="sbQ4" onclick="sbSetQtr(4)">4th</button>
+            <button class="btn btn-qtr btn-sm" id="sbQOT" onclick="sbSetQtr(5)">OT</button>
+          </div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-label">Set clock:</div>
+            <button class="btn btn-ghost btn-sm" onclick="sbSetClock(15,0)">15:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="sbSetClock(5,0)">5:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="sbSetClock(2,0)">2:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="sbSetClock(1,0)">1:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="sbSetClock(0,30)">:30</button>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Home score</div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <button class="btn btn-score-dn btn-sm" onclick="sbChangeScore('home',-1)">−1</button>
+                <button class="btn btn-score-dn btn-sm" onclick="sbChangeScore('home',-6)">−6</button>
+                <input class="sb-input" id="sbHomeScoreInput" type="number" value="0" min="0" onchange="sbSetScore('home',this.value)">
+                <button class="btn btn-score-up btn-sm" onclick="sbChangeScore('home',1)">+1</button>
+                <button class="btn btn-score-up btn-sm" onclick="sbChangeScore('home',6)">+6</button>
+              </div>
+            </div>
+            <div style="width:1px;height:50px;background:var(--border)"></div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Away score</div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <button class="btn btn-score-dn btn-sm" onclick="sbChangeScore('away',-1)">−1</button>
+                <button class="btn btn-score-dn btn-sm" onclick="sbChangeScore('away',-6)">−6</button>
+                <input class="sb-input" id="sbAwayScoreInput" type="number" value="0" min="0" onchange="sbSetScore('away',this.value)">
+                <button class="btn btn-score-up btn-sm" onclick="sbChangeScore('away',1)">+1</button>
+                <button class="btn btn-score-up btn-sm" onclick="sbChangeScore('away',6)">+6</button>
+              </div>
+            </div>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Down</div>
+              <div class="sb-mini-btns">
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDown(1)">1st</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDown(2)">2nd</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDown(3)">3rd</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDown(4)">4th</button>
+              </div>
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Distance</div>
+              <div class="sb-mini-btns">
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDist('Goal')">Goal</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDist('1')">1</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDist('5')">5</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDist('10')">10</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDist('15')">15</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetDist('20')">20</button>
+              </div>
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Ball on</div>
+              <input class="sb-input" id="sbYardlineInput" type="number" value="35" min="1" max="50" onchange="sbSetYardline(this.value)" style="width:60px">
+            </div>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Possession</div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm" onclick="sbSetPoss('home')">Home ▶</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetPoss('away')">◀ Away</button>
+              </div>
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Home TOs</div>
+              <div class="sb-mini-btns">
+                <button class="btn btn-ghost btn-sm" onclick="sbSetTO('home',3)">3</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetTO('home',2)">2</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetTO('home',1)">1</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetTO('home',0)">0</button>
+              </div>
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Away TOs</div>
+              <div class="sb-mini-btns">
+                <button class="btn btn-ghost btn-sm" onclick="sbSetTO('away',3)">3</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetTO('away',2)">2</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetTO('away',1)">1</button>
+                <button class="btn btn-ghost btn-sm" onclick="sbSetTO('away',0)">0</button>
+              </div>
+            </div>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Home team</div>
+              <input class="sb-input sb-team-input" id="sbHomeNameInput" type="text" value="AGGIES" onchange="sbSetTeamName('home',this.value)">
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Away team</div>
+              <input class="sb-input sb-team-input" id="sbAwayNameInput" type="text" value="VISITOR" onchange="sbSetTeamName('away',this.value)">
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Situation</div>
+              <input class="sb-input" id="sbSitInput" type="text" value="2-Minute Offense" onchange="sbSetSituation(this.value)" style="width:160px;font-size:12px;font-family:inherit">
+            </div>
+          </div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-label">Play clock:</div>
+            <button class="btn btn-ghost btn-sm" onclick="sbSetPlayClock(40)">40s</button>
+            <button class="btn btn-ghost btn-sm" onclick="sbSetPlayClock(25)">25s</button>
+            <button class="btn btn-ghost btn-sm" onclick="sbResetPlayClock()">Reset</button>
+          </div>
         </div>
       </div>
 
-      <!-- CONTROLS -->
-      <div class="sb-controls">
-
-        <!-- CLOCK CONTROLS -->
-        <div class="sb-ctrl-row">
-          <button class="btn btn-start" id="sbStartBtn" onclick="sbHandleStart()" style="min-width:100px;font-size:15px">
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="4,2 18,10 4,18"/></svg>
-            Start
-          </button>
-          <button class="btn btn-pause" id="sbPauseBtn" onclick="sbHandlePause()" style="display:none;min-width:100px;font-size:15px">
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><rect x="3" y="2" width="5" height="16" rx="1.5"/><rect x="12" y="2" width="5" height="16" rx="1.5"/></svg>
-            Pause
-          </button>
-          <button class="btn btn-ghost" onclick="sbReset()">Reset</button>
-          <button class="btn btn-ghost" onclick="sbNextDown()">Next down</button>
-          <button class="btn btn-ghost" onclick="sbTouchdown()">
-            <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2l2.4 7.4H20l-6.2 4.5 2.4 7.4L10 17l-6.2 4.3 2.4-7.4L0 9.4h7.6z"/></svg>
-            TD
-          </button>
-          <button class="btn btn-ghost" onclick="sbFieldGoal()">FG</button>
-          <button class="btn btn-ghost" onclick="sbSafety()">Safety</button>
-        </div>
-
-        <div class="sb-divider"></div>
-
-        <!-- QUARTER -->
-        <div class="sb-ctrl-row">
-          <div class="sb-ctrl-label">Quarter:</div>
-          <button class="btn btn-qtr btn-sm active-qtr" id="sbQ1" onclick="sbSetQtr(1)">1st</button>
-          <button class="btn btn-qtr btn-sm" id="sbQ2" onclick="sbSetQtr(2)">2nd</button>
-          <button class="btn btn-qtr btn-sm" id="sbQ3" onclick="sbSetQtr(3)">3rd</button>
-          <button class="btn btn-qtr btn-sm" id="sbQ4" onclick="sbSetQtr(4)">4th</button>
-          <button class="btn btn-qtr btn-sm" id="sbQOT" onclick="sbSetQtr(5)">OT</button>
-        </div>
-
-        <!-- CLOCK TIME PRESETS -->
-        <div class="sb-ctrl-row">
-          <div class="sb-ctrl-label">Set clock:</div>
-          <button class="btn btn-ghost btn-sm" onclick="sbSetClock(15,0)">15:00</button>
-          <button class="btn btn-ghost btn-sm" onclick="sbSetClock(5,0)">5:00</button>
-          <button class="btn btn-ghost btn-sm" onclick="sbSetClock(2,0)">2:00</button>
-          <button class="btn btn-ghost btn-sm" onclick="sbSetClock(1,30)">1:30</button>
-          <button class="btn btn-ghost btn-sm" onclick="sbSetClock(1,0)">1:00</button>
-          <button class="btn btn-ghost btn-sm" onclick="sbSetClock(0,30)">:30</button>
-        </div>
-
-        <div class="sb-divider"></div>
-
-        <!-- SCORES -->
-        <div class="sb-ctrl-row">
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label" id="sbHomeLbl">Home score</div>
-            <div style="display:flex;gap:6px;align-items:center">
-              <button class="btn btn-score-dn btn-sm" onclick="sbChangeScore('home',-1)">−1</button>
-              <button class="btn btn-score-dn btn-sm" onclick="sbChangeScore('home',-6)">−6</button>
-              <input class="sb-input" id="sbHomeScoreInput" type="number" value="0" min="0" onchange="sbSetScore('home',this.value)">
-              <button class="btn btn-score-up btn-sm" onclick="sbChangeScore('home',1)">+1</button>
-              <button class="btn btn-score-up btn-sm" onclick="sbChangeScore('home',6)">+6</button>
-            </div>
-          </div>
-          <div style="width:1px;height:50px;background:var(--border);margin:0 8px"></div>
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label" id="sbAwayLbl">Away score</div>
-            <div style="display:flex;gap:6px;align-items:center">
-              <button class="btn btn-score-dn btn-sm" onclick="sbChangeScore('away',-1)">−1</button>
-              <button class="btn btn-score-dn btn-sm" onclick="sbChangeScore('away',-6)">−6</button>
-              <input class="sb-input" id="sbAwayScoreInput" type="number" value="0" min="0" onchange="sbSetScore('away',this.value)">
-              <button class="btn btn-score-up btn-sm" onclick="sbChangeScore('away',1)">+1</button>
-              <button class="btn btn-score-up btn-sm" onclick="sbChangeScore('away',6)">+6</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="sb-divider"></div>
-
-        <!-- DOWN & DISTANCE & FIELD POSITION -->
-        <div class="sb-ctrl-row">
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Down</div>
-            <div class="sb-mini-btns">
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDown(1)">1st</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDown(2)">2nd</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDown(3)">3rd</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDown(4)">4th</button>
-            </div>
-          </div>
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Distance</div>
-            <div class="sb-mini-btns">
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDist('Goal')">Goal</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDist('1')">1</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDist('5')">5</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDist('10')">10</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDist('15')">15</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetDist('20')">20</button>
-            </div>
-          </div>
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Ball on</div>
-            <input class="sb-input" id="sbYardlineInput" type="number" value="35" min="1" max="50" onchange="sbSetYardline(this.value)" style="width:60px">
-          </div>
-        </div>
-
-        <div class="sb-divider"></div>
-
-        <!-- POSSESSION & TIMEOUTS -->
-        <div class="sb-ctrl-row">
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Possession</div>
-            <div style="display:flex;gap:6px">
-              <button class="btn btn-ghost btn-sm" onclick="sbSetPoss('home')">Home ▶</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetPoss('away')">◀ Away</button>
-            </div>
-          </div>
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Home TOs</div>
-            <div class="sb-mini-btns">
-              <button class="btn btn-ghost btn-sm" onclick="sbSetTO('home',3)">3</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetTO('home',2)">2</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetTO('home',1)">1</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetTO('home',0)">0</button>
-            </div>
-          </div>
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Away TOs</div>
-            <div class="sb-mini-btns">
-              <button class="btn btn-ghost btn-sm" onclick="sbSetTO('away',3)">3</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetTO('away',2)">2</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetTO('away',1)">1</button>
-              <button class="btn btn-ghost btn-sm" onclick="sbSetTO('away',0)">0</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="sb-divider"></div>
-
-        <!-- TEAM NAMES & SITUATION -->
-        <div class="sb-ctrl-row">
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Home team</div>
-            <input class="sb-input sb-team-input" id="sbHomeNameInput" type="text" value="AGGIES" onchange="sbSetTeamName('home',this.value)">
-          </div>
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Away team</div>
-            <input class="sb-input sb-team-input" id="sbAwayNameInput" type="text" value="VISITOR" onchange="sbSetTeamName('away',this.value)">
-          </div>
-          <div class="sb-ctrl-group">
-            <div class="sb-ctrl-label">Situation</div>
-            <input class="sb-input" id="sbSitInput" type="text" value="2-Minute Offense" onchange="sbSetSituation(this.value)" style="width:160px;font-size:12px;font-family:inherit">
-          </div>
-        </div>
-
-        <!-- PLAY CLOCK -->
-        <div class="sb-ctrl-row">
-          <div class="sb-ctrl-label">Play clock:</div>
-          <button class="btn btn-ghost btn-sm" onclick="sbSetPlayClock(40)">40s</button>
-          <button class="btn btn-ghost btn-sm" onclick="sbSetPlayClock(25)">25s</button>
-          <button class="btn btn-ghost btn-sm" onclick="sbResetPlayClock()">Reset</button>
-        </div>
-
-      </div><!-- /sbFootball -->
-
-      <!-- BASKETBALL SCOREBOARD -->
       <div id="sbBasketball" style="display:none">
         <div class="sb-back-btn" onclick="showSbSelector()">
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="16,2 4,10 16,18"/></svg>
-          Change sport
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="16,2 4,10 16,18"/></svg> Change sport
         </div>
-
         <div class="sb-wrap" style="min-height:60vh;display:flex;flex-direction:column;justify-content:center">
           <div class="sb-main" style="flex:1">
             <div class="sb-team" style="padding:20px 12px">
               <div class="sb-team-name home" id="bkHomeName">HOME</div>
               <div class="sb-score home" id="bkHomeScore">0</div>
-              <div style="margin-top:4px"><div class="sec-label" style="text-align:center;font-size:9px">Fouls</div><div class="bk-foul-dots" id="bkHomeFouls"></div></div>
+              <div style="margin-top:4px">
+                <div class="sec-label" style="text-align:center;font-size:9px">Fouls</div>
+                <div class="bk-foul-dots" id="bkHomeFouls"></div>
+              </div>
               <div class="sb-timeouts" id="bkHomeTO" style="margin-top:6px"></div>
             </div>
-            <div class="sb-center" style="gap:4px">
-              <div class="bk-period-badge" id="bkPeriodLabel">1ST QUARTER</div>
+            <div class="sb-center" style="gap:6px">
+              <div class="sb-qtr" id="bkPeriodLabel">1ST QUARTER</div>
               <div class="sb-clock" id="bkClock">10:00</div>
-              <div style="margin:4px 0;text-align:center">
+              <div style="text-align:center">
                 <div class="sec-label" style="font-size:9px;margin-bottom:2px">Shot clock</div>
                 <div class="bk-shot-clock" id="bkShotClock">24</div>
               </div>
@@ -835,7 +788,10 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
             <div class="sb-team" style="padding:20px 12px">
               <div class="sb-team-name" id="bkAwayName">AWAY</div>
               <div class="sb-score" id="bkAwayScore">0</div>
-              <div style="margin-top:4px"><div class="sec-label" style="text-align:center;font-size:9px">Fouls</div><div class="bk-foul-dots" id="bkAwayFouls"></div></div>
+              <div style="margin-top:4px">
+                <div class="sec-label" style="text-align:center;font-size:9px">Fouls</div>
+                <div class="bk-foul-dots" id="bkAwayFouls"></div>
+              </div>
               <div class="sb-timeouts" id="bkAwayTO" style="margin-top:6px"></div>
             </div>
           </div>
@@ -844,7 +800,6 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
             <div class="sb-sit-val" id="bkSituation">4th Quarter Press</div>
           </div>
         </div>
-
         <div class="sb-controls" style="margin-top:10px">
           <div class="sb-ctrl-row">
             <button class="btn btn-start" id="bkStartBtn" onclick="bkHandleStart()" style="min-width:100px;font-size:15px">
@@ -981,13 +936,15 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
             </div>
             <div class="sb-ctrl-group">
               <div class="sb-ctrl-label">Situation</div>
-              <input class="sb-input" id="bkSitInput" type="text" value="4th Quarter Press" onchange="bkSetSit(this.value)" style="width:160px;font-size:12px;font-family:inherit">
+              <input class="sb-input" id="bkSitInput" type="text" value="4th Quarter Press" onchange="bkSetSit(this.value)" style="width:140px;font-size:12px;font-family:inherit">
             </div>
           </div>
         </div>
-      </div><!-- /sbBasketball -->
+      </div>
 
-    </div><!-- /pane-scoreboard -->
+    </div>
+  </div><!-- /panes -->
+</div><!-- /app -->
 
 <div class="toast" id="toast"></div>
 
