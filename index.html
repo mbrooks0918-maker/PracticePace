@@ -2027,12 +2027,9 @@ function saveVideos() {
 }
 
 function getEmbedUrl(url) {
-  // YouTube
-  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
-  if (ytMatch) return 'https://www.youtube.com/embed/' + ytMatch[1] + '?autoplay=1';
-  // Hudl — open in new tab since it requires auth
-  if (url.includes('hudl.com')) return null;
-  // Generic — try to embed directly
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
+  if (yt) return 'https://www.youtube.com/embed/' + yt[1] + '?autoplay=1';
+  if (url.indexOf('hudl.com') > -1) return null;
   return url;
 }
 
@@ -2040,33 +2037,31 @@ function addVideo() {
   const name = document.getElementById('vidNameInput').value.trim();
   const url = document.getElementById('vidUrlInput').value.trim();
   if (!name || !url) { showToast('Enter a title and URL'); return; }
-  videos.push({ id: Date.now(), name, url });
-  saveVideos();
+  videos.push({ id: Date.now(), name: name, url: url });
+  saveVideos(); renderVideos();
   document.getElementById('vidNameInput').value = '';
   document.getElementById('vidUrlInput').value = '';
-  renderVideos();
   showToast('Video added', true);
 }
 
 function deleteVideo(id) {
-  videos = videos.filter(v => v.id !== id);
-  saveVideos();
-  renderVideos();
+  videos = videos.filter(function(v) { return v.id !== id; });
+  saveVideos(); renderVideos();
 }
 
 function playVideo(id) {
-  const v = videos.find(v => v.id === id);
+  const v = videos.find(function(v) { return v.id === id; });
   if (!v) return;
-  const embedUrl = getEmbedUrl(v.url);
-  if (!embedUrl) {
-    // Hudl or auth-required — open in new tab
-    window.open(v.url, '_blank');
-    showToast('Opening in browser — requires login');
-    return;
-  }
-  document.getElementById('vidEmbed').src = embedUrl;
+  const eu = getEmbedUrl(v.url);
+  if (!eu) { window.open(v.url, '_blank'); showToast('Opening in browser'); return; }
+  document.getElementById('vidEmbed').src = eu;
   document.getElementById('vidNowPlaying').style.display = 'block';
   showToast('Playing: ' + v.name, true);
+}
+
+function openVideo(id) {
+  const v = videos.find(function(v) { return v.id === id; });
+  if (v) window.open(v.url, '_blank');
 }
 
 function stopVideo() {
@@ -2077,36 +2072,47 @@ function stopVideo() {
 function renderVideos() {
   const el = document.getElementById('vidList');
   if (!el) return;
-  if (videos.length === 0) {
-    el.innerHTML = '<div class="vid-empty">No videos yet — add one above</div>';
+  el.innerHTML = '';
+  if (!videos.length) {
+    const d = document.createElement('div');
+    d.className = 'vid-empty';
+    d.textContent = 'No videos yet — add one above';
+    el.appendChild(d);
     return;
   }
-  el.innerHTML = '';
-  videos.forEach(v => {
+  videos.forEach(function(v) {
     const card = document.createElement('div');
     card.className = 'vid-card';
-    const isYT = v.url.includes('youtube') || v.url.includes('youtu.be');
-    const isHudl = v.url.includes('hudl.com');
-    const typeLabel = isYT ? '▶ YouTube' : isHudl ? '▶ Hudl' : '▶ Video';
-    const safeId = v.id;
-    card.innerHTML = '<div class="vid-title-row">'
-      + '<div style="display:flex;flex-direction:column;flex:1;min-width:0">'
-      + '<div class="vid-title">' + v.name + '</div>'
-      + '<div class="vid-url">' + typeLabel + '</div>'
-      + '</div>'
-      + '</div>'
-      + '<div class="vid-actions">'
-      + '<button class="btn btn-primary btn-sm" onclick="playVideo(' + safeId + ')">Play</button>'
-      + '<button class="btn btn-ghost btn-sm" onclick="openVideo(' + safeId + ')">Open</button>'
-      + '<button class="btn btn-danger btn-sm" onclick="deleteVideo(' + safeId + ')">✕</button>'
-      + '</div>';
+    const isYT = v.url.indexOf('youtube') > -1 || v.url.indexOf('youtu.be') > -1;
+    const isHudl = v.url.indexOf('hudl.com') > -1;
+    const typeLabel = isYT ? 'YouTube' : isHudl ? 'Hudl' : 'Video';
+    const titleDiv = document.createElement('div');
+    titleDiv.style.cssText = 'display:flex;flex-direction:column;flex:1;min-width:0';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'vid-title'; nameEl.textContent = v.name;
+    const urlEl = document.createElement('div');
+    urlEl.className = 'vid-url'; urlEl.textContent = '\u25b6 ' + typeLabel;
+    titleDiv.appendChild(nameEl); titleDiv.appendChild(urlEl);
+    const row = document.createElement('div');
+    row.className = 'vid-title-row'; row.appendChild(titleDiv);
+    const actions = document.createElement('div');
+    actions.className = 'vid-actions';
+    const playBtn = document.createElement('button');
+    playBtn.className = 'btn btn-primary btn-sm';
+    playBtn.textContent = 'Play';
+    playBtn.onclick = (function(id){ return function(){ playVideo(id); }; })(v.id);
+    const openBtn = document.createElement('button');
+    openBtn.className = 'btn btn-ghost btn-sm';
+    openBtn.textContent = 'Open';
+    openBtn.onclick = (function(id){ return function(){ openVideo(id); }; })(v.id);
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-danger btn-sm';
+    delBtn.textContent = 'X';
+    delBtn.onclick = (function(id){ return function(){ deleteVideo(id); }; })(v.id);
+    actions.appendChild(playBtn); actions.appendChild(openBtn); actions.appendChild(delBtn);
+    card.appendChild(row); card.appendChild(actions);
     el.appendChild(card);
   });
-}
-
-function openVideo(id) {
-  const v = videos.find(v => v.id === id);
-  if (v) window.open(v.url, '_blank');
 }
 
 // ── INIT ──
