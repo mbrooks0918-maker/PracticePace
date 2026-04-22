@@ -339,6 +339,16 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
 .bk-period-badge{font-family:"JetBrains Mono",monospace;font-size:clamp(14px,2.5vw,20px);font-weight:600;color:rgba(255,255,255,0.5);text-align:center}
 .bk-shot-clock{font-family:"JetBrains Mono",monospace;font-size:clamp(36px,6vw,64px);font-weight:600;color:#f5a623;line-height:1;text-align:center}
 .bk-shot-clock.red{color:var(--red);animation:blink 0.5s infinite}
+
+/* ── VIDEO TAB ── */
+.vid-card{background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.vid-title-row{display:flex;align-items:center;gap:8px}
+.vid-title{font-size:14px;font-weight:600;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vid-url{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vid-actions{display:flex;gap:6px}
+.vid-empty{text-align:center;padding:40px 20px;color:var(--dim);font-size:13px}
+.vid-embed{width:100%;aspect-ratio:16/9;border-radius:10px;border:none;background:#000;margin-top:6px}
+.vid-playing-label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--red);margin-bottom:6px}
 </style>
 </head>
 <body>
@@ -382,6 +392,7 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
     <div class="tab" onclick="showTab('audio')">Audio</div>
     <div class="tab" onclick="showTab('music')">Music</div>
     <div class="tab" onclick="showTab('scoreboard')">Scoreboard</div>
+    <div class="tab" onclick="showTab('video')">Video</div>
   </div>
   <div class="panes">
 
@@ -943,6 +954,30 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
       </div>
 
     </div>
+    <!-- VIDEO -->
+    <div class="pane" id="pane-video">
+      <div class="sec-label">Video library</div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:12px">Add YouTube, Hudl, or any video link. Tap Play to show it on the display screen.</div>
+
+      <!-- Now playing -->
+      <div id="vidNowPlaying" style="display:none;margin-bottom:12px">
+        <div class="vid-playing-label">Now playing</div>
+        <iframe class="vid-embed" id="vidEmbed" src="" allowfullscreen allow="autoplay"></iframe>
+        <button class="btn btn-danger btn-sm" style="margin-top:8px;width:100%" onclick="stopVideo()">Stop video</button>
+      </div>
+
+      <!-- Add form -->
+      <div class="vid-card" style="margin-bottom:16px">
+        <div class="sec-label" style="margin:0">Add video</div>
+        <input class="at-input" id="vidNameInput" placeholder="Video title (e.g. Red zone install week 3)">
+        <input class="at-input" id="vidUrlInput" placeholder="Paste YouTube, Hudl, or video URL">
+        <button class="btn btn-primary" onclick="addVideo()">Add to library</button>
+      </div>
+
+      <!-- Video list -->
+      <div id="vidList"></div>
+    </div>
+
   </div><!-- /panes -->
 </div><!-- /app -->
 
@@ -1089,6 +1124,7 @@ function launchApp(userLabel) {
   restoreBg();
   initScriptManager();
   renderPlaylist();
+  renderVideos();
   if (currentUser && sb) loadScriptFromCloud();
 }
 
@@ -1564,7 +1600,7 @@ function showToast(msg, green) {
 
 // ── TABS ──
 function showTab(id) {
-  const ids = ['display','script','background','audio','music','scoreboard'];
+  const ids = ['display','script','background','audio','music','scoreboard','video'];
   document.querySelectorAll('.tab').forEach((t,i) => t.className = 'tab' + (ids[i] === id ? ' active' : ''));
   document.querySelectorAll('.pane').forEach(p => p.className = 'pane' + (p.id === 'pane-'+id ? ' active' : ''));
 }
@@ -1981,6 +2017,91 @@ function bkSetShot(n){ bkState.shotClock=n; bkRender(); }
 function bkResetShot(){ bkState.shotClock=24; bkRender(); }
 function bkSetName(side,val){ if(side==='home') bkState.homeName=val.toUpperCase(); else bkState.awayName=val.toUpperCase(); bkRender(); }
 function bkSetSit(val){ bkState.situation=val; bkRender(); }
+
+
+// ── VIDEO LIBRARY ──────────────────────────────────────────────────────────
+let videos = JSON.parse(localStorage.getItem('at_videos') || '[]');
+
+function saveVideos() {
+  try { localStorage.setItem('at_videos', JSON.stringify(videos)); } catch(e) {}
+}
+
+function getEmbedUrl(url) {
+  // YouTube
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+  if (ytMatch) return 'https://www.youtube.com/embed/' + ytMatch[1] + '?autoplay=1';
+  // Hudl — open in new tab since it requires auth
+  if (url.includes('hudl.com')) return null;
+  // Generic — try to embed directly
+  return url;
+}
+
+function addVideo() {
+  const name = document.getElementById('vidNameInput').value.trim();
+  const url = document.getElementById('vidUrlInput').value.trim();
+  if (!name || !url) { showToast('Enter a title and URL'); return; }
+  videos.push({ id: Date.now(), name, url });
+  saveVideos();
+  document.getElementById('vidNameInput').value = '';
+  document.getElementById('vidUrlInput').value = '';
+  renderVideos();
+  showToast('Video added', true);
+}
+
+function deleteVideo(id) {
+  videos = videos.filter(v => v.id !== id);
+  saveVideos();
+  renderVideos();
+}
+
+function playVideo(id) {
+  const v = videos.find(v => v.id === id);
+  if (!v) return;
+  const embedUrl = getEmbedUrl(v.url);
+  if (!embedUrl) {
+    // Hudl or auth-required — open in new tab
+    window.open(v.url, '_blank');
+    showToast('Opening in browser — requires login');
+    return;
+  }
+  document.getElementById('vidEmbed').src = embedUrl;
+  document.getElementById('vidNowPlaying').style.display = 'block';
+  showToast('Playing: ' + v.name, true);
+}
+
+function stopVideo() {
+  document.getElementById('vidEmbed').src = '';
+  document.getElementById('vidNowPlaying').style.display = 'none';
+}
+
+function renderVideos() {
+  const el = document.getElementById('vidList');
+  if (!el) return;
+  if (videos.length === 0) {
+    el.innerHTML = '<div class="vid-empty">No videos yet — add one above</div>';
+    return;
+  }
+  el.innerHTML = '';
+  videos.forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'vid-card';
+    const isYT = v.url.includes('youtube') || v.url.includes('youtu.be');
+    const isHudl = v.url.includes('hudl.com');
+    const typeLabel = isYT ? '▶ YouTube' : isHudl ? '▶ Hudl' : '▶ Video';
+    card.innerHTML = '<div class="vid-title-row">'
+      + '<div style="display:flex;flex-direction:column;flex:1;min-width:0">'
+      + '<div class="vid-title">' + v.name + '</div>'
+      + '<div class="vid-url">' + typeLabel + ' · ' + v.url + '</div>'
+      + '</div>'
+      + '</div>'
+      + '<div class="vid-actions">'
+      + '<button class="btn btn-primary btn-sm" onclick="playVideo(' + v.id + ')">Play</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="window.open('' + v.url.replace(/'/g,"\'") + '','_blank')">Open</button>'
+      + '<button class="btn btn-danger btn-sm" onclick="deleteVideo(' + v.id + ')">✕</button>'
+      + '</div>';
+    el.appendChild(card);
+  });
+}
 
 // ── INIT ──
 // Check if already signed in
