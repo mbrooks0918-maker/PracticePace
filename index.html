@@ -323,7 +323,7 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
 .sm-new-form.open{display:flex}
 
 /* ── SCOREBOARD SELECTOR ── */
-.sb-selector{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+.sb-selector{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;min-height:200px}
 .sb-sport-card{background:var(--surface2);border:1px solid var(--border2);border-radius:14px;padding:24px 16px;text-align:center;cursor:pointer;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:12px}
 .sb-sport-card:hover{background:rgba(220,30,30,0.1);border-color:rgba(220,30,30,0.4);transform:translateY(-2px)}
 .sb-sport-icon{font-size:48px;line-height:1}
@@ -580,7 +580,7 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
     <div class="pane" id="pane-scoreboard">
 
       <!-- SPORT SELECTOR -->
-      <div id="sbSportSelector">
+      <div id="sbSportSelector" style="display:block">
         <div class="sec-label">Choose scoreboard type</div>
         <div class="sb-selector">
           <div class="sb-sport-card" onclick="showSbSport('football')">
@@ -1887,7 +1887,8 @@ function showSbSport(sport) {
   document.getElementById('sbSportSelector').style.display = 'none';
   document.getElementById('sbFootball').style.display = sport === 'football' ? 'block' : 'none';
   document.getElementById('sbBasketball').style.display = sport === 'basketball' ? 'block' : 'none';
-  if (sport === 'basketball') bkRender();
+  if (sport === 'basketball') { setTimeout(bkRender, 50); }
+  if (sport === 'football') { sbRender(); }
 }
 
 // ── BASKETBALL SCOREBOARD ─────────────────────────────────────────────────────
