@@ -314,6 +314,31 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
 .sb-timeout-dot.on{background:#ff4444;box-shadow:0 0 6px rgba(255,68,68,0.6)}
 .sb-timeout-dot.off{background:rgba(255,255,255,0.12)}
 .sb-timeouts{display:flex;gap:7px;align-items:center;margin-top:4px}
+
+/* ── SCRIPT MANAGER ── */
+.sm-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.sm-select{background:rgba(220,30,30,0.07);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--text);font-family:"DM Sans",sans-serif;outline:none;flex:1;min-width:140px;cursor:pointer}
+.sm-select option{background:#1a0000;color:#fff}
+.sm-new-form{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:12px;margin-bottom:10px;display:none;flex-direction:column;gap:8px}
+.sm-new-form.open{display:flex}
+
+/* ── SCOREBOARD SELECTOR ── */
+.sb-selector{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+.sb-sport-card{background:var(--surface2);border:1px solid var(--border2);border-radius:14px;padding:24px 16px;text-align:center;cursor:pointer;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:12px}
+.sb-sport-card:hover{background:rgba(220,30,30,0.1);border-color:rgba(220,30,30,0.4);transform:translateY(-2px)}
+.sb-sport-icon{font-size:48px;line-height:1}
+.sb-sport-title{font-family:"Bebas Neue",sans-serif;font-size:24px;letter-spacing:2px;color:var(--text)}
+.sb-sport-desc{font-size:12px;color:var(--dim)}
+.sb-back-btn{display:flex;align-items:center;gap:6px;margin-bottom:12px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:600;width:fit-content}
+.sb-back-btn:hover{color:var(--text)}
+
+/* Basketball scoreboard extras */
+.bk-foul-dots{display:flex;gap:4px;justify-content:center;margin-top:2px}
+.bk-foul-dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,0.15);cursor:pointer;transition:all 0.2s}
+.bk-foul-dot.active{background:#f5a623;box-shadow:0 0 5px rgba(245,166,35,0.6)}
+.bk-period-badge{font-family:"JetBrains Mono",monospace;font-size:clamp(14px,2.5vw,20px);font-weight:600;color:rgba(255,255,255,0.5);text-align:center}
+.bk-shot-clock{font-family:"JetBrains Mono",monospace;font-size:clamp(36px,6vw,64px);font-weight:600;color:#f5a623;line-height:1;text-align:center}
+.bk-shot-clock.red{color:var(--red);animation:blink 0.5s infinite}
 </style>
 </head>
 <body>
@@ -421,15 +446,29 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
 
     <!-- SCRIPT -->
     <div class="pane" id="pane-script">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div class="sec-label" style="margin:0">Practice script</div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="saveScript()">
-            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 0 1 2-2h6.586a2 2 0 0 1 1.414.586l2.414 2.414A2 2 0 0 1 17 6.414V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z"/><path d="M7 13h6M7 10h4" stroke="white" stroke-width="1.5" fill="none"/></svg>
-            Save
-          </button>
-          <button class="btn btn-danger btn-sm" onclick="clearScript()">Clear all</button>
+      <!-- Script selector bar -->
+      <div class="sm-bar">
+        <select class="sm-select" id="scriptSelector" onchange="loadSelectedScript()">
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="toggleNewScriptForm()">+ New</button>
+        <button class="btn btn-ghost btn-sm" onclick="saveScript()">
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 0 1 2-2h6.586a2 2 0 0 1 1.414.586l2.414 2.414A2 2 0 0 1 17 6.414V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z"/><path d="M7 13h6M7 10h4" stroke="white" stroke-width="1.5" fill="none"/></svg>
+          Save
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCurrentScript()">Delete</button>
+      </div>
+      <!-- New script form -->
+      <div class="sm-new-form" id="newScriptForm">
+        <div class="sec-label">New script name</div>
+        <input class="at-input" id="newScriptName" placeholder="e.g. Monday — Week 3, Red Zone Install...">
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" style="flex:1" onclick="createNewScript()">Create</button>
+          <button class="btn btn-ghost" style="flex:1" onclick="toggleNewScriptForm()">Cancel</button>
         </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="sec-label" style="margin:0;font-size:11px" id="currentScriptLabel">Practice script</div>
+        <button class="btn btn-danger btn-sm" onclick="clearScript()">Clear all</button>
       </div>
       <div class="script-list" id="scriptList"></div>
       <div class="add-form">
@@ -539,6 +578,30 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
 
     <!-- SCOREBOARD -->
     <div class="pane" id="pane-scoreboard">
+
+      <!-- SPORT SELECTOR -->
+      <div id="sbSportSelector">
+        <div class="sec-label">Choose scoreboard type</div>
+        <div class="sb-selector">
+          <div class="sb-sport-card" onclick="showSbSport('football')">
+            <div class="sb-sport-icon">🏈</div>
+            <div class="sb-sport-title">Football</div>
+            <div class="sb-sport-desc">Game clock, down & distance, play clock, timeouts</div>
+          </div>
+          <div class="sb-sport-card" onclick="showSbSport('basketball')">
+            <div class="sb-sport-icon">🏀</div>
+            <div class="sb-sport-title">Basketball</div>
+            <div class="sb-sport-desc">Game clock, shot clock, fouls, quarters/halves</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOOTBALL SCOREBOARD -->
+      <div id="sbFootball" style="display:none">
+        <div class="sb-back-btn" onclick="showSbSelector()">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="16,2 4,10 16,18"/></svg>
+          Change sport
+        </div>
 
       <!-- SCOREBOARD DISPLAY -->
       <div class="sb-wrap" style="min-height:75vh;display:flex;flex-direction:column;justify-content:center">
@@ -743,10 +806,188 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',sans-serif;colo
           <button class="btn btn-ghost btn-sm" onclick="sbResetPlayClock()">Reset</button>
         </div>
 
-      </div>
-    </div>
-  </div>
-</div>
+      </div><!-- /sbFootball -->
+
+      <!-- BASKETBALL SCOREBOARD -->
+      <div id="sbBasketball" style="display:none">
+        <div class="sb-back-btn" onclick="showSbSelector()">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="16,2 4,10 16,18"/></svg>
+          Change sport
+        </div>
+
+        <div class="sb-wrap" style="min-height:60vh;display:flex;flex-direction:column;justify-content:center">
+          <div class="sb-main" style="flex:1">
+            <div class="sb-team" style="padding:20px 12px">
+              <div class="sb-team-name home" id="bkHomeName">HOME</div>
+              <div class="sb-score home" id="bkHomeScore">0</div>
+              <div style="margin-top:4px"><div class="sec-label" style="text-align:center;font-size:9px">Fouls</div><div class="bk-foul-dots" id="bkHomeFouls"></div></div>
+              <div class="sb-timeouts" id="bkHomeTO" style="margin-top:6px"></div>
+            </div>
+            <div class="sb-center" style="gap:4px">
+              <div class="bk-period-badge" id="bkPeriodLabel">1ST QUARTER</div>
+              <div class="sb-clock" id="bkClock">10:00</div>
+              <div style="margin:4px 0;text-align:center">
+                <div class="sec-label" style="font-size:9px;margin-bottom:2px">Shot clock</div>
+                <div class="bk-shot-clock" id="bkShotClock">24</div>
+              </div>
+              <div class="sb-poss" id="bkPoss">▶</div>
+            </div>
+            <div class="sb-team" style="padding:20px 12px">
+              <div class="sb-team-name" id="bkAwayName">AWAY</div>
+              <div class="sb-score" id="bkAwayScore">0</div>
+              <div style="margin-top:4px"><div class="sec-label" style="text-align:center;font-size:9px">Fouls</div><div class="bk-foul-dots" id="bkAwayFouls"></div></div>
+              <div class="sb-timeouts" id="bkAwayTO" style="margin-top:6px"></div>
+            </div>
+          </div>
+          <div class="sb-situation" style="border-top:2px solid #cc1111">
+            <div class="sb-sit-label">Situation</div>
+            <div class="sb-sit-val" id="bkSituation">4th Quarter Press</div>
+          </div>
+        </div>
+
+        <div class="sb-controls" style="margin-top:10px">
+          <div class="sb-ctrl-row">
+            <button class="btn btn-start" id="bkStartBtn" onclick="bkHandleStart()" style="min-width:100px;font-size:15px">
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="4,2 18,10 4,18"/></svg> Start
+            </button>
+            <button class="btn btn-pause" id="bkPauseBtn" onclick="bkHandlePause()" style="display:none;min-width:100px;font-size:15px">
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><rect x="3" y="2" width="5" height="16" rx="1.5"/><rect x="12" y="2" width="5" height="16" rx="1.5"/></svg> Pause
+            </button>
+            <button class="btn btn-ghost" onclick="bkReset()">Reset</button>
+            <button class="btn btn-ghost" onclick="bkNextPeriod()">Next period</button>
+            <button class="btn btn-ghost" onclick="bkBasket()">+2 Basket</button>
+            <button class="btn btn-ghost" onclick="bkFreeThrow()">+1 FT</button>
+            <button class="btn btn-ghost" onclick="bkThree()">+3 Three</button>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-label">Format:</div>
+            <button class="btn btn-qtr btn-sm active-qtr" id="bkFmtQ" onclick="bkSetFormat('quarters')">Quarters</button>
+            <button class="btn btn-qtr btn-sm" id="bkFmtH" onclick="bkSetFormat('halves')">Halves</button>
+            <div style="width:1px;height:20px;background:var(--border)"></div>
+            <div class="sb-ctrl-label">Period:</div>
+            <button class="btn btn-qtr btn-sm active-qtr" id="bkP1" onclick="bkSetPeriod(1)">1</button>
+            <button class="btn btn-qtr btn-sm" id="bkP2" onclick="bkSetPeriod(2)">2</button>
+            <button class="btn btn-qtr btn-sm" id="bkP3" onclick="bkSetPeriod(3)">3</button>
+            <button class="btn btn-qtr btn-sm" id="bkP4" onclick="bkSetPeriod(4)">4</button>
+            <button class="btn btn-qtr btn-sm" id="bkPOT" onclick="bkSetPeriod(5)">OT</button>
+          </div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-label">Set clock:</div>
+            <button class="btn btn-ghost btn-sm" onclick="bkSetClock(10,0)">10:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="bkSetClock(8,0)">8:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="bkSetClock(5,0)">5:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="bkSetClock(2,0)">2:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="bkSetClock(1,0)">1:00</button>
+            <button class="btn btn-ghost btn-sm" onclick="bkSetClock(0,30)">:30</button>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Home score</div>
+              <div style="display:flex;gap:5px;align-items:center">
+                <button class="btn btn-score-dn btn-sm" onclick="bkChangeScore('home',-1)">−1</button>
+                <button class="btn btn-score-dn btn-sm" onclick="bkChangeScore('home',-2)">−2</button>
+                <input class="sb-input" id="bkHomeScoreInput" type="number" value="0" min="0" onchange="bkSetScore('home',this.value)">
+                <button class="btn btn-score-up btn-sm" onclick="bkChangeScore('home',1)">+1</button>
+                <button class="btn btn-score-up btn-sm" onclick="bkChangeScore('home',2)">+2</button>
+              </div>
+            </div>
+            <div style="width:1px;height:50px;background:var(--border)"></div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Away score</div>
+              <div style="display:flex;gap:5px;align-items:center">
+                <button class="btn btn-score-dn btn-sm" onclick="bkChangeScore('away',-1)">−1</button>
+                <button class="btn btn-score-dn btn-sm" onclick="bkChangeScore('away',-2)">−2</button>
+                <input class="sb-input" id="bkAwayScoreInput" type="number" value="0" min="0" onchange="bkSetScore('away',this.value)">
+                <button class="btn btn-score-up btn-sm" onclick="bkChangeScore('away',1)">+1</button>
+                <button class="btn btn-score-up btn-sm" onclick="bkChangeScore('away',2)">+2</button>
+              </div>
+            </div>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Home fouls</div>
+              <div class="sb-mini-btns">
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('home',0)">0</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('home',1)">1</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('home',2)">2</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('home',3)">3</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('home',4)">4</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('home',5)">5+</button>
+              </div>
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Away fouls</div>
+              <div class="sb-mini-btns">
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('away',0)">0</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('away',1)">1</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('away',2)">2</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('away',3)">3</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('away',4)">4</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetFouls('away',5)">5+</button>
+              </div>
+            </div>
+          </div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Home TOs</div>
+              <div class="sb-mini-btns">
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('home',5)">5</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('home',4)">4</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('home',3)">3</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('home',2)">2</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('home',1)">1</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('home',0)">0</button>
+              </div>
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Away TOs</div>
+              <div class="sb-mini-btns">
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('away',5)">5</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('away',4)">4</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('away',3)">3</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('away',2)">2</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('away',1)">1</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetTO('away',0)">0</button>
+              </div>
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Possession</div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm" onclick="bkSetPoss('home')">Home ▶</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetPoss('away')">◀ Away</button>
+              </div>
+            </div>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-ctrl-row">
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Shot clock</div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm" onclick="bkSetShot(24)">24s</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkSetShot(14)">14s</button>
+                <button class="btn btn-ghost btn-sm" onclick="bkResetShot()">Reset</button>
+              </div>
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Home team</div>
+              <input class="sb-input sb-team-input" id="bkHomeNameInput" type="text" value="HOME" onchange="bkSetName('home',this.value)">
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Away team</div>
+              <input class="sb-input sb-team-input" id="bkAwayNameInput" type="text" value="AWAY" onchange="bkSetName('away',this.value)">
+            </div>
+            <div class="sb-ctrl-group">
+              <div class="sb-ctrl-label">Situation</div>
+              <input class="sb-input" id="bkSitInput" type="text" value="4th Quarter Press" onchange="bkSetSit(this.value)" style="width:160px;font-size:12px;font-family:inherit">
+            </div>
+          </div>
+        </div>
+      </div><!-- /sbBasketball -->
+
+    </div><!-- /pane-scoreboard -->
 
 <div class="toast" id="toast"></div>
 
@@ -885,10 +1126,9 @@ function launchApp(userLabel) {
   setOverlay(60);
   initSwatches();
   restoreBg();
-  updateDisplay();
-  renderScript();
+  initScriptManager();
   renderPlaylist();
-  if (currentUser && sb) loadScript();
+  if (currentUser && sb) loadScriptFromCloud();
 }
 
 async function signOut() {
@@ -898,18 +1138,29 @@ async function signOut() {
 
 // ── SUPABASE SAVE/LOAD ──
 async function saveScript() {
-  if (demoModeActive || !sb || !currentUser) { showToast('Sign in to save scripts'); return; }
+  saveAllScripts();
+  showToast('Script saved!', true);
+  if (demoModeActive || !sb || !currentUser) return;
   try {
-    await sb.from('scripts').upsert({user_id: currentUser.id, team: 'albertville-aggies', data: JSON.stringify(script)});
-    showToast('Script saved!', true);
-  } catch(e) { showToast('Save failed — check Supabase setup'); }
+    await sb.from('scripts').upsert({user_id: currentUser.id, team: 'albertville-aggies', data: JSON.stringify(allScripts)});
+  } catch(e) {}
 }
 
-async function loadScript() {
+async function loadScriptFromCloud() {
   if (!sb || !currentUser) return;
   try {
     const {data} = await sb.from('scripts').select('data').eq('user_id', currentUser.id).eq('team','albertville-aggies').single();
-    if (data?.data) { script = JSON.parse(data.data); renderScript(); updateDisplay(); }
+    if (data?.data) {
+      const parsed = JSON.parse(data.data);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        allScripts = parsed;
+      } else if (Array.isArray(parsed)) {
+        allScripts['default'] = { name: 'Practice Script 1', drills: parsed };
+      }
+      currentScriptId = Object.keys(allScripts)[0];
+      script = JSON.parse(JSON.stringify(allScripts[currentScriptId].drills));
+      renderScriptSelector(); renderScript(); updateDisplay();
+    }
   } catch(e) {}
 }
 
@@ -934,38 +1185,46 @@ loadHorn();
 
 function playHorn() {
   const c = getCtx(), t = c.currentTime;
+  // Compressor to maximize perceived loudness
+  const comp = c.createDynamicsCompressor();
+  comp.threshold.setValueAtTime(-6, t);
+  comp.knee.setValueAtTime(0, t);
+  comp.ratio.setValueAtTime(20, t);
+  comp.attack.setValueAtTime(0.001, t);
+  comp.release.setValueAtTime(0.1, t);
+  comp.connect(c.destination);
+  // Master gain — pushed hard
+  const master = c.createGain();
+  master.gain.setValueAtTime(4.0, t);
+  master.connect(comp);
   if (hornBuffer) {
-    // Play real sample — loud and full duration
     const src = c.createBufferSource();
-    const g = c.createGain();
     src.buffer = hornBuffer;
-    src.connect(g); g.connect(c.destination);
-    g.gain.setValueAtTime(1.4, t);
-    src.start(t);
+    // Play twice overlapped for double blast volume
+    const src2 = c.createBufferSource();
+    src2.buffer = hornBuffer;
+    src.connect(master); src2.connect(master);
+    src.start(t); src2.start(t + 0.04);
   } else {
-    // Fallback: much better synthesized air horn
-    // Layer 1: main blast tone
+    // Fallback: loud synthesized horn
     const o1=c.createOscillator(),g1=c.createGain(),dist=c.createWaveShaper();
-    const curve=new Float32Array(256);
-    for(let i=0;i<256;i++){const x=i*2/256-1;curve[i]=x<0?-Math.pow(-x,0.5):Math.pow(x,0.5)*1.5;}
+    const curve=new Float32Array(512);
+    for(let i=0;i<512;i++){const x=i*2/512-1;curve[i]=x<0?-Math.pow(-x,0.3):Math.pow(x,0.3)*2.0;}
     dist.curve=curve;
     o1.type='sawtooth';o1.frequency.setValueAtTime(233,t);o1.frequency.setValueAtTime(220,t+0.05);
     o1.frequency.linearRampToValueAtTime(210,t+1.8);
-    g1.gain.setValueAtTime(0,t);g1.gain.linearRampToValueAtTime(0.7,t+0.02);
-    g1.gain.setValueAtTime(0.7,t+1.6);g1.gain.exponentialRampToValueAtTime(0.001,t+2.2);
-    o1.connect(dist);dist.connect(g1);g1.connect(c.destination);
-    o1.start(t);o1.stop(t+2.2);
-    // Layer 2: harmonic
+    g1.gain.setValueAtTime(0,t);g1.gain.linearRampToValueAtTime(1.5,t+0.01);
+    g1.gain.setValueAtTime(1.5,t+1.6);g1.gain.exponentialRampToValueAtTime(0.001,t+2.2);
+    o1.connect(dist);dist.connect(g1);g1.connect(master);o1.start(t);o1.stop(t+2.2);
     const o2=c.createOscillator(),g2=c.createGain();
     o2.type='square';o2.frequency.setValueAtTime(466,t);o2.frequency.linearRampToValueAtTime(440,t+1.8);
-    g2.gain.setValueAtTime(0,t);g2.gain.linearRampToValueAtTime(0.3,t+0.02);
-    g2.gain.setValueAtTime(0.3,t+1.6);g2.gain.exponentialRampToValueAtTime(0.001,t+2.0);
-    o2.connect(g2);g2.connect(c.destination);o2.start(t);o2.stop(t+2.0);
-    // Layer 3: low rumble
+    g2.gain.setValueAtTime(0,t);g2.gain.linearRampToValueAtTime(0.8,t+0.01);
+    g2.gain.setValueAtTime(0.8,t+1.6);g2.gain.exponentialRampToValueAtTime(0.001,t+2.0);
+    o2.connect(g2);g2.connect(master);o2.start(t);o2.stop(t+2.0);
     const o3=c.createOscillator(),g3=c.createGain();
     o3.type='sawtooth';o3.frequency.setValueAtTime(116,t);
-    g3.gain.setValueAtTime(0.4,t);g3.gain.exponentialRampToValueAtTime(0.001,t+1.8);
-    o3.connect(g3);g3.connect(c.destination);o3.start(t);o3.stop(t+1.8);
+    g3.gain.setValueAtTime(1.0,t);g3.gain.exponentialRampToValueAtTime(0.001,t+1.8);
+    o3.connect(g3);g3.connect(master);o3.start(t);o3.stop(t+1.8);
   }
 }
 
@@ -1254,6 +1513,7 @@ function addSeg() {
   document.getElementById('newDetail').value = '';
   document.getElementById('newDur').value = '';
   renderScript();
+  saveAllScripts();
   showToast('Segment added');
 }
 
@@ -1526,6 +1786,242 @@ function sbSafety() {
 
 // Init scoreboard on load
 sbRender();
+
+// ── SCRIPT MANAGER ──────────────────────────────────────────────────────────
+let allScripts = {};
+let currentScriptId = 'default';
+
+function initScriptManager() {
+  try {
+    const saved = localStorage.getItem('at_all_scripts');
+    if (saved) {
+      allScripts = JSON.parse(saved);
+    }
+  } catch(e) {}
+  if (Object.keys(allScripts).length === 0) {
+    allScripts['default'] = { name: 'Practice Script 1', drills: JSON.parse(JSON.stringify(defaultScript)) };
+  }
+  currentScriptId = localStorage.getItem('at_current_script_id') || 'default';
+  if (!allScripts[currentScriptId]) currentScriptId = Object.keys(allScripts)[0];
+  script = JSON.parse(JSON.stringify(allScripts[currentScriptId].drills));
+  renderScriptSelector();
+  renderScript();
+  updateDisplay();
+}
+
+function renderScriptSelector() {
+  const sel = document.getElementById('scriptSelector');
+  if (!sel) return;
+  sel.innerHTML = '';
+  Object.keys(allScripts).forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = allScripts[id].name;
+    opt.selected = id === currentScriptId;
+    sel.appendChild(opt);
+  });
+  const lbl = document.getElementById('currentScriptLabel');
+  if (lbl) lbl.textContent = allScripts[currentScriptId]?.name || 'Practice script';
+}
+
+function loadSelectedScript() {
+  const sel = document.getElementById('scriptSelector');
+  if (!sel) return;
+  currentScriptId = sel.value;
+  localStorage.setItem('at_current_script_id', currentScriptId);
+  script = JSON.parse(JSON.stringify(allScripts[currentScriptId].drills));
+  idx = 0; isOverrun = false; overrunSecs = 0;
+  if (script.length > 0) { timeLeft = script[0].dur * 60; periodSecs = timeLeft; }
+  updateDisplay(); renderScript(); renderScriptSelector();
+  showToast('Loaded: ' + allScripts[currentScriptId].name, true);
+}
+
+function toggleNewScriptForm() {
+  const f = document.getElementById('newScriptForm');
+  f.classList.toggle('open');
+  if (f.classList.contains('open')) document.getElementById('newScriptName').focus();
+}
+
+function createNewScript() {
+  const name = document.getElementById('newScriptName').value.trim();
+  if (!name) return;
+  const id = 'script_' + Date.now();
+  allScripts[id] = { name, drills: [] };
+  currentScriptId = id;
+  script = [];
+  idx = 0; timeLeft = 600; periodSecs = 600;
+  saveAllScripts();
+  localStorage.setItem('at_current_script_id', id);
+  document.getElementById('newScriptName').value = '';
+  document.getElementById('newScriptForm').classList.remove('open');
+  renderScriptSelector(); renderScript(); updateDisplay();
+  showToast('Created: ' + name, true);
+}
+
+function deleteCurrentScript() {
+  if (Object.keys(allScripts).length <= 1) { showToast('Cannot delete last script'); return; }
+  if (!confirm('Delete "' + allScripts[currentScriptId].name + '"?')) return;
+  delete allScripts[currentScriptId];
+  currentScriptId = Object.keys(allScripts)[0];
+  script = JSON.parse(JSON.stringify(allScripts[currentScriptId].drills));
+  idx = 0; isOverrun = false; overrunSecs = 0;
+  if (script.length > 0) { timeLeft = script[0].dur * 60; periodSecs = timeLeft; }
+  saveAllScripts();
+  localStorage.setItem('at_current_script_id', currentScriptId);
+  renderScriptSelector(); renderScript(); updateDisplay();
+}
+
+function saveAllScripts() {
+  allScripts[currentScriptId].drills = JSON.parse(JSON.stringify(script));
+  try { localStorage.setItem('at_all_scripts', JSON.stringify(allScripts)); } catch(e) {}
+}
+
+// ── SCOREBOARD SPORT SELECTOR ─────────────────────────────────────────────────
+function showSbSelector() {
+  document.getElementById('sbSportSelector').style.display = 'block';
+  document.getElementById('sbFootball').style.display = 'none';
+  document.getElementById('sbBasketball').style.display = 'none';
+}
+
+function showSbSport(sport) {
+  document.getElementById('sbSportSelector').style.display = 'none';
+  document.getElementById('sbFootball').style.display = sport === 'football' ? 'block' : 'none';
+  document.getElementById('sbBasketball').style.display = sport === 'basketball' ? 'block' : 'none';
+  if (sport === 'basketball') bkRender();
+}
+
+// ── BASKETBALL SCOREBOARD ─────────────────────────────────────────────────────
+let bkState = {
+  homeScore:0, awayScore:0, homeName:'HOME', awayName:'AWAY',
+  period:1, format:'quarters', clockSecs:600, running:false,
+  poss:'home', homeTO:5, awayTO:5, homeFouls:0, awayFouls:0,
+  situation:'4th Quarter Press', shotClock:24, scRunning:false,
+};
+let bkTicker=null, bkScTicker=null;
+
+const bkPeriodNames = {
+  quarters: ['','1ST QUARTER','2ND QUARTER','3RD QUARTER','4TH QUARTER','OVERTIME'],
+  halves:   ['','1ST HALF','2ND HALF','OVERTIME','',''],
+};
+
+function bkFmt(s){ const m=Math.floor(s/60),ss=s%60; return m+':'+(ss<10?'0':'')+ss; }
+
+function bkRender() {
+  const st = bkState;
+  document.getElementById('bkHomeName').textContent = st.homeName;
+  document.getElementById('bkAwayName').textContent = st.awayName;
+  document.getElementById('bkHomeScore').textContent = st.homeScore;
+  document.getElementById('bkAwayScore').textContent = st.awayScore;
+  document.getElementById('bkPeriodLabel').textContent = (bkPeriodNames[st.format]||bkPeriodNames.quarters)[st.period] || 'OVERTIME';
+  document.getElementById('bkClock').textContent = bkFmt(st.clockSecs);
+  document.getElementById('bkClock').className = 'sb-clock' + (st.clockSecs <= 60 && st.running ? ' red' : '');
+  const sc = document.getElementById('bkShotClock');
+  sc.textContent = st.shotClock;
+  sc.className = 'bk-shot-clock' + (st.shotClock <= 5 ? ' red' : '');
+  document.getElementById('bkPoss').textContent = st.poss === 'home' ? '▶' : '◀';
+  document.getElementById('bkPoss').className = 'sb-poss ' + st.poss;
+  document.getElementById('bkSituation').textContent = st.situation;
+  // Fouls
+  ['home','away'].forEach(side => {
+    const el = document.getElementById('bk' + (side==='home'?'Home':'Away') + 'Fouls');
+    const count = side==='home' ? st.homeFouls : st.awayFouls;
+    el.innerHTML = '';
+    for(let i=0;i<5;i++){
+      const d=document.createElement('div');
+      d.className='bk-foul-dot'+(i<count?' active':'');
+      el.appendChild(d);
+    }
+  });
+  // Timeouts
+  ['home','away'].forEach(side => {
+    const el = document.getElementById('bk'+(side==='home'?'Home':'Away')+'TO');
+    const count = side==='home' ? st.homeTO : st.awayTO;
+    el.innerHTML = '';
+    for(let i=0;i<5;i++){
+      const d=document.createElement('div');
+      d.className='sb-timeout-dot'+(i<count?' on':' off');
+      el.appendChild(d);
+    }
+  });
+  // Period buttons
+  [1,2,3,4,5].forEach(p=>{
+    const id=p===5?'bkPOT':('bkP'+p);
+    const btn=document.getElementById(id);
+    if(btn) btn.className='btn btn-qtr btn-sm'+(st.period===p?' active-qtr':'');
+  });
+  [['bkFmtQ','quarters'],['bkFmtH','halves']].forEach(([id,fmt])=>{
+    const btn=document.getElementById(id);
+    if(btn) btn.className='btn btn-qtr btn-sm'+(st.format===fmt?' active-qtr':'');
+  });
+}
+
+function bkHandleStart() {
+  bkState.running=true;
+  document.getElementById('bkStartBtn').style.display='none';
+  document.getElementById('bkPauseBtn').style.display='inline-flex';
+  bkTicker=setInterval(()=>{
+    if(bkState.clockSecs>0){
+      bkState.clockSecs--;
+      if(bkState.clockSecs===0) sfx('horn');
+    }
+    if(bkState.shotClock>0){
+      bkState.shotClock--;
+      if(bkState.shotClock===0) sfx('alarm');
+    }
+    bkRender();
+  },1000);
+}
+
+function bkHandlePause() {
+  bkState.running=false; clearInterval(bkTicker);
+  document.getElementById('bkStartBtn').style.display='inline-flex';
+  document.getElementById('bkStartBtn').innerHTML='<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="4,2 18,10 4,18"/></svg> Resume';
+  document.getElementById('bkPauseBtn').style.display='none';
+}
+
+function bkReset() {
+  bkHandlePause();
+  bkState.clockSecs = bkState.format==='halves' ? 1200 : 600;
+  bkState.shotClock = 24;
+  document.getElementById('bkStartBtn').innerHTML='<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="4,2 18,10 4,18"/></svg> Start';
+  bkRender();
+}
+
+function bkSetClock(m,s){ bkState.clockSecs=m*60+s; bkRender(); }
+function bkSetPeriod(p){ bkState.period=p; bkState.clockSecs=bkState.format==='halves'?1200:600; bkState.shotClock=24; bkRender(); }
+function bkSetFormat(f){
+  bkState.format=f; bkState.period=1;
+  bkState.clockSecs=f==='halves'?1200:600;
+  bkRender();
+}
+function bkNextPeriod(){
+  bkHandlePause();
+  if(bkState.period<4) bkState.period++;
+  bkState.clockSecs=bkState.format==='halves'?1200:600;
+  bkState.shotClock=24; bkState.homeFouls=0; bkState.awayFouls=0;
+  document.getElementById('bkStartBtn').innerHTML='<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><polygon points="4,2 18,10 4,18"/></svg> Start';
+  bkRender(); showToast('Next period — fouls reset');
+}
+function bkChangeScore(side,delta){
+  if(side==='home'){bkState.homeScore=Math.max(0,bkState.homeScore+delta);document.getElementById('bkHomeScoreInput').value=bkState.homeScore;}
+  else{bkState.awayScore=Math.max(0,bkState.awayScore+delta);document.getElementById('bkAwayScoreInput').value=bkState.awayScore;}
+  bkRender();
+}
+function bkSetScore(side,val){
+  const v=Math.max(0,parseInt(val)||0);
+  if(side==='home') bkState.homeScore=v; else bkState.awayScore=v;
+  bkRender();
+}
+function bkBasket(){ bkHandlePause(); sfx('horn'); bkChangeScore(bkState.poss,2); bkState.shotClock=24; showToast('Basket! +2',true); bkRender(); }
+function bkFreeThrow(){ bkChangeScore(bkState.poss,1); bkRender(); }
+function bkThree(){ bkHandlePause(); sfx('horn'); bkChangeScore(bkState.poss,3); bkState.shotClock=24; showToast('Three! +3',true); bkRender(); }
+function bkSetFouls(side,n){ if(side==='home') bkState.homeFouls=n; else bkState.awayFouls=n; bkRender(); }
+function bkSetTO(side,n){ if(side==='home') bkState.homeTO=n; else bkState.awayTO=n; bkRender(); }
+function bkSetPoss(side){ bkState.poss=side; bkRender(); }
+function bkSetShot(n){ bkState.shotClock=n; bkRender(); }
+function bkResetShot(){ bkState.shotClock=24; bkRender(); }
+function bkSetName(side,val){ if(side==='home') bkState.homeName=val.toUpperCase(); else bkState.awayName=val.toUpperCase(); bkRender(); }
+function bkSetSit(val){ bkState.situation=val; bkRender(); }
 
 // ── INIT ──
 // Check if already signed in
