@@ -973,6 +973,10 @@ const defaultScript = [
   {name:'2-minute drill',detail:'Offense tempo',dur:10,done:false,overran:false},
 ];
 
+// ── SCRIPT MANAGER STATE ──
+let allScripts = {};
+let currentScriptId = 'default';
+
 // ── STATE ──
 let script = JSON.parse(JSON.stringify(defaultScript));
 let idx = 0, periodSecs = 600, timeLeft = 600;
@@ -1745,9 +1749,6 @@ function sbSafety() {
 sbRender();
 
 // ── SCRIPT MANAGER ──────────────────────────────────────────────────────────
-let allScripts = {};
-let currentScriptId = 'default';
-
 function initScriptManager() {
   try {
     const saved = localStorage.getItem('at_all_scripts');
