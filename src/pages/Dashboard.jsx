@@ -63,6 +63,16 @@ export default function Dashboard() {
   const [activeScript, setActiveScript] = useState(null)
   const [loading, setLoading]           = useState(true)
 
+  // Safety net: if loadAll() somehow never finishes, force-unblock after 8 s
+  useEffect(() => {
+    if (!loading) return
+    const t = setTimeout(() => {
+      console.warn('[Dashboard] Load timeout — forcing loading=false')
+      setLoading(false)
+    }, 8000)
+    return () => clearTimeout(t)
+  }, [loading])
+
   // ── Spotify mini player state ──────────────────────────────────────────────
   const [spotifySnap, setSpotifySnap] = useState(() => getSpotifySnapshot())
   useEffect(() => {
@@ -81,56 +91,64 @@ export default function Dashboard() {
   async function loadAll() {
     // ── Guest path: everything comes from localStorage ──────────────────────
     if (isGuest) {
-      seedGuestIfEmpty()
-      const guestScripts = getGuestScripts()
-      setScripts(guestScripts)
+      try {
+        seedGuestIfEmpty()
+        const guestScripts = getGuestScripts()
+        setScripts(guestScripts)
 
-      const activeId = getGuestActiveId()
-      const active   = guestScripts.find(s => s.id === activeId) ?? guestScripts[0] ?? null
-      setActiveScript(active)
-
-      setLoading(false)
+        const activeId = getGuestActiveId()
+        const active   = guestScripts.find(s => s.id === activeId) ?? guestScripts[0] ?? null
+        setActiveScript(active)
+      } catch (err) {
+        console.error('[Dashboard] Guest loadAll error:', err)
+      } finally {
+        setLoading(false)
+      }
       return
     }
 
     // ── Authenticated path: Supabase ─────────────────────────────────────────
-    // Fetch profile first, then fetch org explicitly by org_id.
-    // We do NOT use the nested organizations(*) join because PostgREST can
-    // return null for it silently if the FK schema cache hasn't refreshed.
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select('id, org_id, full_name, email, role')
-      .eq('id', user.id)
-      .single()
+    try {
+      // Fetch profile first, then fetch org explicitly by org_id.
+      // We do NOT use the nested organizations(*) join because PostgREST can
+      // return null for it silently if the FK schema cache hasn't refreshed.
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('id, org_id, full_name, email, role')
+        .eq('id', user.id)
+        .maybeSingle()
 
-    setProfile(prof ?? null)
+      setProfile(prof ?? null)
 
-    const resolvedOrgId = prof?.org_id ?? contextOrgId
+      const resolvedOrgId = prof?.org_id ?? contextOrgId
 
-    // Explicit org fetch — always reliable, never depends on FK join caching
-    let orgData = null
-    if (resolvedOrgId) {
-      const { data: orgFetch } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', resolvedOrgId)
-        .single()
-      orgData = orgFetch ?? null
-    }
-    setOrg(orgData)
+      // Explicit org fetch — always reliable, never depends on FK join caching
+      let orgData = null
+      if (resolvedOrgId) {
+        const { data: orgFetch } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', resolvedOrgId)
+          .maybeSingle()
+        orgData = orgFetch ?? null
+      }
+      setOrg(orgData)
 
-    if (resolvedOrgId) {
-      const list = await loadScripts(resolvedOrgId)
-      if (list.length === 0) {
-        const sample = await seedSampleScript(resolvedOrgId, user.id, orgData?.sport?.toLowerCase())
-        if (sample) {
-          setScripts([sample])
-          setActiveScript(sample)
+      if (resolvedOrgId) {
+        const list = await loadScripts(resolvedOrgId)
+        if (list.length === 0) {
+          const sample = await seedSampleScript(resolvedOrgId, user.id, orgData?.sport?.toLowerCase())
+          if (sample) {
+            setScripts([sample])
+            setActiveScript(sample)
+          }
         }
       }
+    } catch (err) {
+      console.error('[Dashboard] loadAll error:', err)
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
   async function loadScripts(orgId) {
