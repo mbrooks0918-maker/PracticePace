@@ -4,7 +4,7 @@ import {
   playPeriodEnd, playDrumline, playCrowdClap,
   getAutoSounds, setAutoSound, resumeCtx,
 } from '../../lib/sounds'
-import { getAuthUrl, getStoredToken, getPlaylists } from '../../lib/spotify'
+import { getAuthUrl, getPlaylists } from '../../lib/spotify'
 import {
   subscribe as subscribeSpotify,
   getSnapshot, initPlayer,
@@ -226,7 +226,7 @@ function SpotifyPlayer({ orgColor }) {
           </svg>
         </button>
 
-        <button onClick={handlePlayPause} disabled={!isReady && !deviceId}
+        <button onClick={handlePlayPause} disabled={!isReady && !snap.deviceId}
           className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-30"
           style={{ backgroundColor: SPOTIFY_GREEN, boxShadow: `0 0 24px ${SPOTIFY_GREEN}66` }}>
           {isPlaying ? (
@@ -280,8 +280,7 @@ function SpotifyPlayer({ orgColor }) {
           <p className="text-xs" style={{ color: '#4a2020' }}>Loading playlists…</p>
         ) : (
           <select value={selectedUri} onChange={e => handlePlaylistSelect(e.target.value)}
-            disabled={waiting}
-            className="rounded-xl px-4 py-3 text-sm outline-none disabled:opacity-40"
+            className="rounded-xl px-4 py-3 text-sm outline-none"
             style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}>
             <option value="">— Choose a playlist —</option>
             {playlists.map(p => (
