@@ -96,24 +96,25 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
         const userId = user?.id
         if (!userId) { setSaveErr('Not signed in — please reload.'); return }
 
-        // 1. Create the organization
-        const slug = form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now()
-        const { data: newOrg, error: orgErr } = await supabase
+        // Generate org ID client-side so we don't need a SELECT-after-INSERT
+        // (profile row doesn't exist yet, so org SELECT policies would block it)
+        const orgId = crypto.randomUUID()
+        const slug  = form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now()
+
+        // 1. Insert org (no .select() — avoids SELECT policy chicken-and-egg)
+        const { error: orgErr } = await supabase
           .from('organizations')
-          .insert({ name: form.name.trim(), sport: form.sport || 'football', slug, primary_color: '#cc1111', secondary_color: '#ffffff' })
-          .select()
-          .single()
+          .insert({ id: orgId, name: form.name.trim(), sport: form.sport || 'football', slug, primary_color: '#cc1111', secondary_color: '#ffffff' })
         if (orgErr) { setSaveErr(`Could not create org: ${orgErr.message}`); return }
 
-        // 2. Create or update the profile row
+        // 2. Link profile to the new org
         const { error: profErr } = await supabase
           .from('profiles')
-          .upsert({ id: userId, org_id: newOrg.id, email: user?.email ?? '', role: 'admin', full_name: profile?.full_name ?? '' }, { onConflict: 'id' })
-        if (profErr) { setSaveErr(`Could not create profile: ${profErr.message}`); return }
+          .upsert({ id: userId, org_id: orgId, email: user?.email ?? '', role: 'admin', full_name: profile?.full_name ?? '' }, { onConflict: 'id' })
+        if (profErr) { setSaveErr(`Could not link profile: ${profErr.message}`); return }
 
         setSaved(true)
-        onOrgUpdate?.(newOrg)
-        // Reload page so Dashboard re-fetches everything with the new org
+        // Reload so Dashboard re-fetches everything with the new org
         setTimeout(() => window.location.reload(), 1200)
       }
       setTimeout(() => setSaved(false), 3000)
