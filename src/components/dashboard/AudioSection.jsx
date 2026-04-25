@@ -1,16 +1,20 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   playAirHorn, playWhistle, playStadiumCrowd,
   playPeriodEnd, playDrumline, playCrowdClap,
   getAutoSounds, setAutoSound, resumeCtx,
 } from '../../lib/sounds'
+import {
+  getAuthUrl, getStoredToken, clearTokens,
+  getPlaylists, getCurrentTrack,
+  play, pause, next, previous, setVolume, transferPlayback,
+  refreshToken, isTokenExpired,
+} from '../../lib/spotify'
 
-// ── Sound definitions (no emoji — clean text labels with SVG icons) ────────────
+// ── Sound definitions ─────────────────────────────────────────────────────────
 const SOUNDS = [
   {
-    key: 'airhorn',
-    label: 'Air Horn',
-    fn: playAirHorn,
+    key: 'airhorn', label: 'Air Horn', fn: playAirHorn,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
@@ -20,9 +24,7 @@ const SOUNDS = [
     ),
   },
   {
-    key: 'whistle',
-    label: 'Whistle',
-    fn: playWhistle,
+    key: 'whistle', label: 'Whistle', fn: playWhistle,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="10" cy="14" r="5"/>
@@ -32,9 +34,7 @@ const SOUNDS = [
     ),
   },
   {
-    key: 'crowd',
-    label: 'Crowd Roar',
-    fn: playStadiumCrowd,
+    key: 'crowd', label: 'Crowd Roar', fn: playStadiumCrowd,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -45,9 +45,7 @@ const SOUNDS = [
     ),
   },
   {
-    key: 'periodend',
-    label: 'Buzzer',
-    fn: playPeriodEnd,
+    key: 'periodend', label: 'Buzzer', fn: playPeriodEnd,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10"/>
@@ -56,9 +54,7 @@ const SOUNDS = [
     ),
   },
   {
-    key: 'drumline',
-    label: 'Drumline',
-    fn: playDrumline,
+    key: 'drumline', label: 'Drumline', fn: playDrumline,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <ellipse cx="12" cy="5" rx="9" ry="3"/>
@@ -68,9 +64,7 @@ const SOUNDS = [
     ),
   },
   {
-    key: 'crowdclap',
-    label: 'Crowd Clap',
-    fn: playCrowdClap,
+    key: 'crowdclap', label: 'Crowd Clap', fn: playCrowdClap,
     icon: (
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14.5 2v7.5"/>
@@ -116,6 +110,333 @@ function Toggle({ label, value, onChange, orgColor }) {
   )
 }
 
+// ── Spotify Player ────────────────────────────────────────────────────────────
+function SpotifyPlayer({ orgColor }) {
+  const [isReady,        setIsReady]        = useState(false)
+  const [deviceId,       setDeviceId]       = useState(null)
+  const [isPlaying,      setIsPlaying]      = useState(false)
+  const [currentTrack,   setCurrentTrack]   = useState(null)
+  const [volume,         setVolumeState]    = useState(50)
+  const [playlists,      setPlaylists]      = useState([])
+  const [selectedUri,    setSelectedUri]    = useState('')
+  const [loadingLists,   setLoadingLists]   = useState(true)
+  const [error,          setError]          = useState('')
+  const [sdkError,       setSdkError]       = useState('')
+
+  const playerRef    = useRef(null)
+  const pollRef      = useRef(null)
+
+  // ── Initialize Web Playback SDK ───────────────────────────────────────────
+  useEffect(() => {
+    // Ensure token is valid before initializing
+    async function getToken() {
+      try {
+        if (isTokenExpired()) await refreshToken()
+        return getStoredToken()
+      } catch {
+        return null
+      }
+    }
+
+    function initPlayer() {
+      if (!window.Spotify) { setSdkError('Spotify SDK not loaded. Please refresh the page.'); return }
+
+      const player = new window.Spotify.Player({
+        name: 'PracticePace',
+        getOAuthToken: cb => getToken().then(t => { if (t) cb(t) }),
+        volume: 0.5,
+      })
+
+      player.addListener('ready', ({ device_id }) => {
+        setDeviceId(device_id)
+        setIsReady(true)
+        // Transfer playback to this device (don't auto-start)
+        transferPlayback(device_id, false).catch(() => {})
+      })
+
+      player.addListener('not_ready', () => {
+        setIsReady(false)
+      })
+
+      player.addListener('player_state_changed', state => {
+        if (!state) return
+        setIsPlaying(!state.paused)
+        const track = state.track_window?.current_track
+        if (track) {
+          setCurrentTrack({
+            name:    track.name,
+            artist:  track.artists?.map(a => a.name).join(', '),
+            album:   track.album?.name,
+            art:     track.album?.images?.[0]?.url ?? null,
+          })
+        }
+      })
+
+      player.addListener('initialization_error', ({ message }) => setSdkError(message))
+      player.addListener('authentication_error', ({ message }) => setSdkError(message))
+      player.addListener('account_error',        ({ message }) => setSdkError('Spotify Premium is required for playback. ' + message))
+
+      player.connect()
+      playerRef.current = player
+    }
+
+    // SDK calls window.onSpotifyWebPlaybackSDKReady when loaded
+    if (window.Spotify) {
+      initPlayer()
+    } else {
+      window.onSpotifyWebPlaybackSDKReady = initPlayer
+    }
+
+    return () => {
+      if (playerRef.current) { playerRef.current.disconnect(); playerRef.current = null }
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [])
+
+  // ── Poll currently playing (fallback for state_changed gaps) ─────────────
+  useEffect(() => {
+    if (!isReady) return
+    pollRef.current = setInterval(async () => {
+      try {
+        const data = await getCurrentTrack()
+        if (!data) return
+        setIsPlaying(data.is_playing)
+        const track = data.item
+        if (track) {
+          setCurrentTrack({
+            name:   track.name,
+            artist: track.artists?.map(a => a.name).join(', '),
+            album:  track.album?.name,
+            art:    track.album?.images?.[0]?.url ?? null,
+          })
+        }
+      } catch { /* ignore poll errors */ }
+    }, 5000)
+    return () => clearInterval(pollRef.current)
+  }, [isReady])
+
+  // ── Load playlists ────────────────────────────────────────────────────────
+  useEffect(() => {
+    getPlaylists()
+      .then(list => { setPlaylists(list); setLoadingLists(false) })
+      .catch(e   => { setError(e.message); setLoadingLists(false) })
+  }, [])
+
+  // ── Controls ──────────────────────────────────────────────────────────────
+  async function handlePlayPause() {
+    try {
+      if (isPlaying) {
+        await pause(deviceId)
+        setIsPlaying(false)
+      } else {
+        if (selectedUri) {
+          await play({ contextUri: selectedUri, deviceId })
+        } else {
+          await play({ deviceId })
+        }
+        setIsPlaying(true)
+      }
+    } catch (e) { setError(e.message) }
+  }
+
+  async function handleNext()     { try { await next(deviceId)     } catch (e) { setError(e.message) } }
+  async function handlePrevious() { try { await previous(deviceId) } catch (e) { setError(e.message) } }
+
+  async function handleVolume(v) {
+    setVolumeState(v)
+    try { await setVolume(v, deviceId) } catch { /* ignore */ }
+    if (playerRef.current) playerRef.current.setVolume(v / 100).catch(() => {})
+  }
+
+  async function handlePlaylistSelect(uri) {
+    setSelectedUri(uri)
+    if (!uri) return
+    try {
+      await play({ contextUri: uri, deviceId })
+      setIsPlaying(true)
+    } catch (e) { setError(e.message) }
+  }
+
+  function handleDisconnect() {
+    if (playerRef.current) playerRef.current.disconnect()
+    clearTokens()
+    window.location.reload()
+  }
+
+  const SPOTIFY_GREEN = '#1db954'
+
+  if (sdkError) {
+    return (
+      <div className="flex flex-col gap-3 p-4 rounded-xl" style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000' }}>
+        <p className="text-xs font-semibold" style={{ color: '#ff6666' }}>{sdkError}</p>
+        <button onClick={handleDisconnect} className="text-xs underline self-start" style={{ color: '#9a8080' }}>
+          Disconnect and try again
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* ── Not yet ready ── */}
+      {!isReady && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000' }}>
+          <div className="w-4 h-4 rounded-full border-2 animate-spin flex-shrink-0"
+            style={{ borderColor: SPOTIFY_GREEN, borderTopColor: 'transparent' }} />
+          <p className="text-xs" style={{ color: '#9a8080' }}>Connecting to Spotify device…</p>
+        </div>
+      )}
+
+      {/* ── Now playing card ── */}
+      <div
+        className="flex items-center gap-4 p-4 rounded-2xl"
+        style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}33` }}
+      >
+        {/* Album art */}
+        <div
+          className="w-16 h-16 rounded-xl flex-shrink-0 flex items-center justify-center overflow-hidden"
+          style={{ backgroundColor: '#1a2a1a' }}
+        >
+          {currentTrack?.art ? (
+            <img src={currentTrack.art} alt="Album art" className="w-full h-full object-cover" />
+          ) : (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1db95466" strokeWidth="1.5">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+            </svg>
+          )}
+        </div>
+
+        {/* Track info */}
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-white text-sm truncate">
+            {currentTrack?.name ?? (isReady ? 'No track playing' : 'Connecting…')}
+          </p>
+          <p className="text-xs truncate mt-0.5" style={{ color: '#9a8080' }}>
+            {currentTrack?.artist ?? ''}
+          </p>
+          {isReady && (
+            <div className="flex items-center gap-1 mt-1">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: SPOTIFY_GREEN }} />
+              <span className="text-xs font-semibold" style={{ color: SPOTIFY_GREEN }}>Connected</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Transport controls ── */}
+      <div className="flex items-center justify-center gap-4">
+        <button
+          onClick={handlePrevious}
+          disabled={!isReady}
+          className="w-11 h-11 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
+          style={{ backgroundColor: '#1a2a1a', color: '#fff' }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="19 20 9 12 19 4 19 20"/>
+            <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
+
+        <button
+          onClick={handlePlayPause}
+          disabled={!isReady}
+          className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-30"
+          style={{ backgroundColor: SPOTIFY_GREEN, boxShadow: `0 0 24px ${SPOTIFY_GREEN}66` }}
+        >
+          {isPlaying ? (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
+            </svg>
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="white" style={{ marginLeft: 3 }}>
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+          )}
+        </button>
+
+        <button
+          onClick={handleNext}
+          disabled={!isReady}
+          className="w-11 h-11 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
+          style={{ backgroundColor: '#1a2a1a', color: '#fff' }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 4 15 12 5 20 5 4"/>
+            <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* ── Volume ── */}
+      <div className="flex items-center gap-3 px-1">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a8080" strokeWidth="2" strokeLinecap="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        </svg>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={volume}
+          onChange={e => handleVolume(Number(e.target.value))}
+          className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
+          style={{
+            background: `linear-gradient(to right, ${SPOTIFY_GREEN} ${volume}%, #2a0000 ${volume}%)`,
+            accentColor: SPOTIFY_GREEN,
+          }}
+        />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a8080" strokeWidth="2" strokeLinecap="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        </svg>
+      </div>
+
+      {/* ── Playlist selector ── */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#9a8080' }}>
+          Play a Playlist
+        </label>
+        {loadingLists ? (
+          <p className="text-xs" style={{ color: '#4a2020' }}>Loading playlists…</p>
+        ) : (
+          <select
+            value={selectedUri}
+            onChange={e => handlePlaylistSelect(e.target.value)}
+            disabled={!isReady}
+            className="rounded-xl px-4 py-3 text-sm outline-none disabled:opacity-40"
+            style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}
+          >
+            <option value="">— Choose a playlist —</option>
+            {playlists.map(p => (
+              <option key={p.id} value={p.uri}>{p.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {error && (
+        <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
+          {error}
+        </p>
+      )}
+
+      {/* ── Disconnect ── */}
+      <button
+        onClick={handleDisconnect}
+        className="self-start text-xs underline transition-opacity hover:opacity-60"
+        style={{ color: '#6a3030' }}
+      >
+        Disconnect Spotify
+      </button>
+    </div>
+  )
+}
+
+// ── Main AudioSection ─────────────────────────────────────────────────────────
 export default function AudioSection({ orgColor }) {
   const [autoSounds, setAutoSoundsState] = useState(() => {
     const saved = getAutoSounds()
@@ -127,18 +448,18 @@ export default function AudioSection({ orgColor }) {
   const [unlocked, setUnlocked]           = useState(false)
   const [customSounds, setCustomSounds]   = useState([])
   const [playingCustom, setPlayingCustom] = useState(null)
-  const customInputRef = useRef(null)
-  const audioRefs = useRef({})
+  const [spotifyConnected, setSpotifyConnected] = useState(() => !!getStoredToken())
+  const [connecting, setConnecting]       = useState(false)
 
-  async function unlock() {
-    await resumeCtx()
-    setUnlocked(true)
-  }
+  const customInputRef = useRef(null)
+  const audioRefs      = useRef({})
+
+  async function unlock() { await resumeCtx(); setUnlocked(true) }
 
   async function handlePlay(sound) {
     if (!unlocked) await unlock()
     setPlaying(sound.key)
-    try { await sound.fn() } catch (e) { /* ignore */ }
+    try { await sound.fn() } catch { /* ignore */ }
     setTimeout(() => setPlaying(p => p === sound.key ? null : p), 2500)
   }
 
@@ -159,12 +480,9 @@ export default function AudioSection({ orgColor }) {
   }
 
   function playCustom(sound) {
-    // Stop any currently playing custom sound
     const prev = audioRefs.current[playingCustom]
     if (prev) { prev.pause(); prev.currentTime = 0 }
-
     if (playingCustom === sound.key) { setPlayingCustom(null); return }
-
     const audio = new Audio(sound.url)
     audio.volume = 1.0
     audioRefs.current[sound.key] = audio
@@ -182,11 +500,24 @@ export default function AudioSection({ orgColor }) {
     }
   }
 
+  async function handleConnectSpotify() {
+    setConnecting(true)
+    try {
+      const url = await getAuthUrl()
+      window.location.href = url
+    } catch (e) {
+      alert('Could not generate Spotify auth URL: ' + e.message)
+      setConnecting(false)
+    }
+  }
+
+  const SPOTIFY_GREEN = '#1db954'
+
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6">
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 
-        {/* LEFT — Sound Effects */}
+        {/* ── LEFT — Sound Effects ── */}
         <div className="flex flex-col gap-4">
           <div>
             <h2 className="font-black text-white text-lg">Sound Effects</h2>
@@ -196,38 +527,30 @@ export default function AudioSection({ orgColor }) {
           </div>
 
           {!unlocked && (
-            <button
-              onClick={unlock}
-              className="py-3 rounded-xl text-sm font-bold text-white"
-              style={{ backgroundColor: orgColor }}
-            >
+            <button onClick={unlock} className="py-3 rounded-xl text-sm font-bold text-white"
+              style={{ backgroundColor: orgColor }}>
               Tap here to enable audio
             </button>
           )}
 
-          {/* Built-in sounds — 2 column grid, text labels only */}
           <div className="grid grid-cols-2 gap-3">
             {SOUNDS.map(sound => {
-              const isPlaying = playing === sound.key
+              const active = playing === sound.key
               return (
                 <button
                   key={sound.key}
                   onClick={() => handlePlay(sound)}
                   className="flex flex-col items-center gap-2 rounded-2xl py-5 px-3 transition-all active:scale-95"
                   style={{
-                    backgroundColor: isPlaying ? `${orgColor}28` : '#1a0000',
-                    border:          `2px solid ${isPlaying ? orgColor : '#2a0000'}`,
-                    boxShadow:       isPlaying ? `0 0 20px ${orgColor}44` : 'none',
-                    color:           isPlaying ? orgColor : '#9a8080',
+                    backgroundColor: active ? `${orgColor}28` : '#1a0000',
+                    border:          `2px solid ${active ? orgColor : '#2a0000'}`,
+                    boxShadow:       active ? `0 0 20px ${orgColor}44` : 'none',
+                    color:           active ? orgColor : '#9a8080',
                   }}
                 >
                   {sound.icon}
-                  <span className="text-xs font-bold text-center leading-tight">
-                    {sound.label}
-                  </span>
-                  {isPlaying && (
-                    <span className="text-xs animate-pulse font-semibold">▶ playing</span>
-                  )}
+                  <span className="text-xs font-bold text-center leading-tight">{sound.label}</span>
+                  {active && <span className="text-xs animate-pulse font-semibold">▶ playing</span>}
                 </button>
               )
             })}
@@ -240,21 +563,13 @@ export default function AudioSection({ orgColor }) {
                 <h3 className="font-bold text-white text-sm">Custom Sounds</h3>
                 <p className="text-xs mt-0.5" style={{ color: '#9a8080' }}>Upload your own MP3 or audio file</p>
               </div>
-              <label
-                htmlFor="custom-audio-upload"
+              <label htmlFor="custom-audio-upload"
                 className="px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-all"
-                style={{ backgroundColor: `${orgColor}22`, border: `1px solid ${orgColor}`, color: orgColor }}
-              >
+                style={{ backgroundColor: `${orgColor}22`, border: `1px solid ${orgColor}`, color: orgColor }}>
                 + Upload
               </label>
-              <input
-                ref={customInputRef}
-                id="custom-audio-upload"
-                type="file"
-                accept="audio/*"
-                onChange={handleCustomUpload}
-                className="hidden"
-              />
+              <input ref={customInputRef} id="custom-audio-upload" type="file" accept="audio/*"
+                onChange={handleCustomUpload} className="hidden" />
             </div>
 
             {customSounds.length === 0 ? (
@@ -266,31 +581,22 @@ export default function AudioSection({ orgColor }) {
                 {customSounds.map(cs => {
                   const isActive = playingCustom === cs.key
                   return (
-                    <div
-                      key={cs.key}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                    <div key={cs.key} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
                       style={{
                         backgroundColor: isActive ? `${orgColor}18` : '#1a0000',
                         border:          `1px solid ${isActive ? orgColor + '66' : '#2a0000'}`,
-                      }}
-                    >
-                      <button
-                        onClick={() => playCustom(cs)}
+                      }}>
+                      <button onClick={() => playCustom(cs)}
                         className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm"
-                        style={{ backgroundColor: isActive ? orgColor : '#2a0000', color: '#fff' }}
-                      >
+                        style={{ backgroundColor: isActive ? orgColor : '#2a0000', color: '#fff' }}>
                         {isActive ? '⏹' : '▶'}
                       </button>
-                      <span className="flex-1 text-sm font-semibold truncate" style={{ color: isActive ? '#fff' : '#9a8080' }}>
+                      <span className="flex-1 text-sm font-semibold truncate"
+                        style={{ color: isActive ? '#fff' : '#9a8080' }}>
                         {cs.label}
                       </span>
-                      <button
-                        onClick={() => removeCustom(cs.key)}
-                        className="text-xs px-2 py-1 rounded"
-                        style={{ color: '#6a3030' }}
-                      >
-                        ✕
-                      </button>
+                      <button onClick={() => removeCustom(cs.key)} className="text-xs px-2 py-1 rounded"
+                        style={{ color: '#6a3030' }}>✕</button>
                     </div>
                   )
                 })}
@@ -299,7 +605,7 @@ export default function AudioSection({ orgColor }) {
           </div>
         </div>
 
-        {/* RIGHT — Auto-Sounds + Music */}
+        {/* ── RIGHT — Auto-Sounds + Music ── */}
         <div className="flex flex-col gap-6">
 
           {/* Auto-sounds */}
@@ -323,47 +629,58 @@ export default function AudioSection({ orgColor }) {
             </div>
           </div>
 
-          {/* Music — polished section */}
-          <div className="flex flex-col gap-4 p-5 rounded-2xl" style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-bold text-white text-base">Music</h3>
-                <p className="text-xs mt-1 leading-relaxed" style={{ color: '#9a8080' }}>
-                  Connect your playlist to play music during practice periods. Control playback without leaving the app.
-                </p>
-              </div>
-              <span
-                className="shrink-0 text-xs font-black px-2.5 py-1 rounded-full"
-                style={{ backgroundColor: '#1a0000', border: '1px solid #3a2000', color: '#cc8800' }}
-              >
-                Coming Soon
-              </span>
-            </div>
+          {/* Music / Spotify */}
+          <div className="flex flex-col gap-4 p-5 rounded-2xl"
+            style={{ backgroundColor: '#110000', border: `1px solid ${spotifyConnected ? SPOTIFY_GREEN + '44' : '#2a0000'}` }}>
 
-            <div className="flex flex-col gap-3">
-              <button
-                disabled
-                className="flex items-center gap-4 px-5 py-4 rounded-xl transition-all"
-                style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', opacity: 0.55, cursor: 'not-allowed' }}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="#1db954">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {/* Spotify logo */}
+                <svg width="22" height="22" viewBox="0 0 24 24" fill={SPOTIFY_GREEN}>
                   <circle cx="12" cy="12" r="12"/>
                   <path d="M17.9 10.9C14.7 9 9.35 8.8 6.3 9.75c-.5.15-1-.15-1.15-.6-.15-.5.15-1 .6-1.15C9.65 6.8 15.6 7 19.35 9.2c.45.25.6.85.35 1.3-.25.35-.85.5-1.3.25m-.1 2.8c-.25.4-.75.5-1.15.25-2.7-1.65-6.8-2.15-9.95-1.15-.4.1-.85-.1-.95-.5-.1-.4.1-.85.5-.95 3.65-1.1 8.15-.55 11.25 1.35.4.25.5.75.3 1m-1.3 2.8c-.2.35-.65.45-1 .25-2.35-1.45-5.3-1.75-8.8-.95-.35.1-.65-.15-.75-.45-.1-.35.15-.65.45-.75 3.8-.85 7.1-.5 9.7 1.1.35.15.4.65.4 1" fill="white"/>
                 </svg>
-                <div className="text-left flex-1">
-                  <p className="text-sm font-bold text-white">Spotify</p>
-                  <p className="text-xs" style={{ color: '#9a8080' }}>Connect your Spotify account to control music playback during practice. Requires Spotify Premium.</p>
-                </div>
+                <h3 className="font-bold text-white text-base">Spotify</h3>
+              </div>
+              {spotifyConnected && (
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                  style={{ backgroundColor: '#2a1800', color: '#cc8800', border: '1px solid #3a2000' }}>
-                  Soon
+                  style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}66`, color: SPOTIFY_GREEN }}>
+                  ✓ Connected
                 </span>
-              </button>
+              )}
             </div>
 
-            <p className="text-xs px-1" style={{ color: '#4a2020' }}>
-              Full streaming integration arrives in v2.
-            </p>
+            {spotifyConnected ? (
+              <SpotifyPlayer orgColor={orgColor} />
+            ) : (
+              <div className="flex flex-col gap-4">
+                <p className="text-xs leading-relaxed" style={{ color: '#9a8080' }}>
+                  Connect your Spotify account to control music playback during practice. Requires Spotify Premium.
+                </p>
+                <button
+                  onClick={handleConnectSpotify}
+                  disabled={connecting}
+                  className="flex items-center justify-center gap-3 py-3.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-60"
+                  style={{ backgroundColor: SPOTIFY_GREEN, boxShadow: `0 0 20px ${SPOTIFY_GREEN}44` }}
+                >
+                  {connecting ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 animate-spin"
+                        style={{ borderColor: '#fff', borderTopColor: 'transparent' }} />
+                      Redirecting…
+                    </>
+                  ) : (
+                    <>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                        <circle cx="12" cy="12" r="12" fill="none"/>
+                        <path d="M17.9 10.9C14.7 9 9.35 8.8 6.3 9.75c-.5.15-1-.15-1.15-.6-.15-.5.15-1 .6-1.15C9.65 6.8 15.6 7 19.35 9.2c.45.25.6.85.35 1.3-.25.35-.85.5-1.3.25m-.1 2.8c-.25.4-.75.5-1.15.25-2.7-1.65-6.8-2.15-9.95-1.15-.4.1-.85-.1-.95-.5-.1-.4.1-.85.5-.95 3.65-1.1 8.15-.55 11.25 1.35.4.25.5.75.3 1m-1.3 2.8c-.2.35-.65.45-1 .25-2.35-1.45-5.3-1.75-8.8-.95-.35.1-.65-.15-.75-.45-.1-.35.15-.65.45-.75 3.8-.85 7.1-.5 9.7 1.1.35.15.4.65.4 1"/>
+                      </svg>
+                      Connect Spotify
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
 
         </div>

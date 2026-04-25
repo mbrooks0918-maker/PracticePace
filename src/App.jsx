@@ -9,6 +9,7 @@ import Display from './pages/Display'
 import Script from './pages/Script'
 import Scoreboard from './pages/Scoreboard'
 import Admin from './pages/Admin'
+import SpotifyCallback from './pages/SpotifyCallback'
 
 export default function App() {
   return (
@@ -16,13 +17,14 @@ export default function App() {
       <AuthProvider>
         <OrgProvider>
           <Routes>
-            <Route path="/"           element={<Login />} />
-            <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
-            <Route path="/dashboard"  element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/display"    element={<ProtectedRoute><Display /></ProtectedRoute>} />
-            <Route path="/script"     element={<ProtectedRoute><Script /></ProtectedRoute>} />
-            <Route path="/scoreboard" element={<ProtectedRoute><Scoreboard /></ProtectedRoute>} />
-            <Route path="/admin"      element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+            <Route path="/"                  element={<Login />} />
+            <Route path="/onboarding"        element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
+            <Route path="/dashboard"         element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/display"           element={<ProtectedRoute><Display /></ProtectedRoute>} />
+            <Route path="/script"            element={<ProtectedRoute><Script /></ProtectedRoute>} />
+            <Route path="/scoreboard"        element={<ProtectedRoute><Scoreboard /></ProtectedRoute>} />
+            <Route path="/admin"             element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+            <Route path="/spotify/callback"  element={<SpotifyCallback />} />
           </Routes>
         </OrgProvider>
       </AuthProvider>
