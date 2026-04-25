@@ -379,17 +379,73 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
           )}
         </div>
 
-        {/* ── 6. Time hot buttons ─────────────────────────────────────────── */}
-        <div className="shrink-0 flex items-center justify-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#3a1818' }}>Set</span>
+        {/* ── 6 & 7. Single control row: nav + start/next + time hot buttons ── */}
+        <div className="shrink-0 flex items-center justify-center gap-2 pt-1 pb-0.5 flex-wrap">
+          {/* Prev */}
+          <button
+            onClick={goPrev}
+            disabled={drillIdx === 0}
+            title="Previous segment"
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-xl disabled:opacity-20 transition-opacity"
+            style={{
+              border:          '1px solid #2a0000',
+              color:           '#9a8080',
+              backgroundColor: backgroundUrl ? 'rgba(17,0,0,0.85)' : '#110000',
+            }}
+          >
+            ⏮
+          </button>
+
+          {/* Reset */}
+          <button
+            onClick={resetAll}
+            title="Reset"
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-xl transition-opacity"
+            style={{
+              border:          '1px solid #2a0000',
+              color:           '#9a8080',
+              backgroundColor: backgroundUrl ? 'rgba(17,0,0,0.85)' : '#110000',
+            }}
+          >
+            ↺
+          </button>
+
+          {/* Start / Pause */}
+          <button
+            onClick={handleStart}
+            className="h-11 px-8 rounded-xl font-black text-white transition-all"
+            style={{ backgroundColor: orgColor, minWidth: 130, fontSize: '1.1rem' }}
+          >
+            {isRunning ? '⏸ Pause' : isDone ? '✓ Done' : '▶ Start'}
+          </button>
+
+          {/* Next → */}
+          <button
+            onClick={hornAndAdvance}
+            disabled={isLastDrill && !isRunning && secondsLeft === 0}
+            className="h-11 px-5 rounded-xl font-black transition-all disabled:opacity-30"
+            style={{
+              backgroundColor: backgroundUrl ? 'rgba(26,0,0,0.90)' : '#110000',
+              border:          `2px solid ${orgColor}`,
+              color:           orgColor,
+              fontSize:        '1rem',
+            }}
+          >
+            Next →
+          </button>
+
+          {/* Divider */}
+          <div className="w-px h-7 mx-1" style={{ backgroundColor: '#2a0000' }} />
+
+          {/* Time hot buttons — sm size */}
           {TIME_PRESETS.map(m => {
-            const secs    = m * 60
+            const secs     = m * 60
             const isActive = secondsLeft === secs && !isRunning
             return (
               <button
                 key={m}
                 onClick={() => setTimeTo(secs)}
-                className="px-3 py-1.5 rounded-lg text-sm font-bold"
+                className="h-11 px-2.5 rounded-lg text-xs font-bold"
                 style={{
                   backgroundColor: isActive ? `${orgColor}22` : '#110000',
                   border:          `1px solid ${isActive ? orgColor : '#2a0000'}`,
@@ -402,62 +458,10 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
           })}
           <button
             onClick={addMinute}
-            className="px-3 py-1.5 rounded-lg text-sm font-bold"
+            className="h-11 px-2.5 rounded-lg text-xs font-bold"
             style={{ backgroundColor: '#110000', border: '1px solid #2a0000', color: '#9a8080' }}
           >
             +1m
-          </button>
-        </div>
-
-        {/* ── 7. Controls ─────────────────────────────────────────────────── */}
-        <div className="shrink-0 flex items-center justify-center gap-3 pt-1 pb-0.5">
-          <button
-            onClick={goPrev}
-            disabled={drillIdx === 0}
-            title="Previous segment"
-            className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl disabled:opacity-20 transition-opacity"
-            style={{
-              border:          '1px solid #2a0000',
-              color:           '#9a8080',
-              backgroundColor: backgroundUrl ? 'rgba(17,0,0,0.85)' : '#110000',
-            }}
-          >
-            ⏮
-          </button>
-
-          <button
-            onClick={resetAll}
-            title="Reset"
-            className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl transition-opacity"
-            style={{
-              border:          '1px solid #2a0000',
-              color:           '#9a8080',
-              backgroundColor: backgroundUrl ? 'rgba(17,0,0,0.85)' : '#110000',
-            }}
-          >
-            ↺
-          </button>
-
-          <button
-            onClick={handleStart}
-            className="h-14 px-10 rounded-xl font-black text-white transition-all"
-            style={{ backgroundColor: orgColor, minWidth: 150, fontSize: '1.2rem' }}
-          >
-            {isRunning ? '⏸ Pause' : isDone ? '✓ Done' : '▶ Start'}
-          </button>
-
-          <button
-            onClick={hornAndAdvance}
-            disabled={isLastDrill && !isRunning && secondsLeft === 0}
-            className="h-14 px-7 rounded-xl font-black transition-all disabled:opacity-30"
-            style={{
-              backgroundColor: backgroundUrl ? 'rgba(26,0,0,0.90)' : '#110000',
-              border:          `2px solid ${orgColor}`,
-              color:           orgColor,
-              fontSize:        '1.1rem',
-            }}
-          >
-            Next →
           </button>
         </div>
 
