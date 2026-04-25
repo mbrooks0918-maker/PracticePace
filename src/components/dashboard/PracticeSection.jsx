@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { playAirHorn, playWhistle, playPeriodEnd, loadHorn, getAutoSounds } from '../../lib/sounds'
+import { playAirHorn, playWhistle, playPeriodEnd, loadHorn, getAutoSounds, setAutoSound } from '../../lib/sounds'
 import { duckForHorn } from '../../lib/spotifyPlayer'
 
 function pad(n) { return String(n).padStart(2, '0') }
@@ -68,6 +68,10 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
   // ── Coach preference toggles ───────────────────────────────────────────────
   const [autoAdvance,  setAutoAdvance]  = useState(() => getPracticePrefs().autoAdvance  ?? true)
   const [allowOverrun, setAllowOverrun] = useState(() => getPracticePrefs().allowOverrun ?? false)
+
+  // ── Auto-sound toggles (same localStorage keys as Audio tab) ──────────────
+  const [hornOnEnd,    setHornOnEnd]    = useState(() => getAutoSounds().hornOnEnd    ?? true)
+  const [whistleAt60,  setWhistleAt60]  = useState(() => getAutoSounds().whistleAt60  ?? true)
 
   const idxRef          = useRef(0)
   const scriptRef       = useRef(activeScript)
@@ -192,6 +196,12 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
   }
   function toggleAllowOverrun() {
     const val = !allowOverrun; setAllowOverrun(val); savePracticePref('allowOverrun', val)
+  }
+  function toggleHornOnEnd() {
+    const val = !hornOnEnd; setHornOnEnd(val); setAutoSound('hornOnEnd', val)
+  }
+  function toggleWhistleAt60() {
+    const val = !whistleAt60; setWhistleAt60(val); setAutoSound('whistleAt60', val)
   }
 
   function handleStart() {
@@ -468,7 +478,7 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
         </div>
 
         {/* ── 8. Coach toggles ─────────────────────────────────────────────── */}
-        <div className="shrink-0 flex items-center justify-center gap-3 pb-1">
+        <div className="shrink-0 flex items-center justify-center gap-3 pb-1 flex-wrap">
           <ToggleBtn
             label="Auto-Advance"
             active={autoAdvance}
@@ -480,6 +490,18 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
             active={allowOverrun}
             onColor="#ef4444"
             onClick={toggleAllowOverrun}
+          />
+          <ToggleBtn
+            label="Air Horn"
+            active={hornOnEnd}
+            onColor={orgColor}
+            onClick={toggleHornOnEnd}
+          />
+          <ToggleBtn
+            label="Whistle 1:00"
+            active={whistleAt60}
+            onColor={orgColor}
+            onClick={toggleWhistleAt60}
           />
         </div>
 
