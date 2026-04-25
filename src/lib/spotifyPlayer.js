@@ -69,6 +69,7 @@ export function initPlayer() {
   })
 
   player.addListener('ready', ({ device_id }) => {
+    console.log('[Spotify] SDK ready, device ID:', device_id)
     deviceId = device_id
     isReady  = true
     localStorage.setItem(DEVICE_KEY, device_id)
@@ -148,10 +149,16 @@ export async function playTrack(contextUri) {
   // Normalise URI so URLs and malformed values don't reach the API
   const uri = normalizeSpotifyUri(contextUri)
 
-  console.log('[Spotify] playTrack →', { uri, deviceId: id })
+  console.log('[Spotify] Attempting play:', { playlistUri: uri, deviceId: id, isReady })
 
+  // Transfer playback to this device first, then wait 250ms for Spotify to
+  // register the transfer before sending the play command — without this delay
+  // the play API returns 404 "Device not found" even with a valid device_id
   await transferPlayback(id, false)
+  await new Promise(r => setTimeout(r, 250))
+
   await apiPlay({ contextUri: uri, deviceId: id })
+  console.log('[Spotify] Play command sent successfully')
   isPlaying = true
   emit('state', getSnapshot())
 }

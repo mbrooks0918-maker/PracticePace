@@ -125,19 +125,28 @@ async function api(path, options = {}) {
     token = await refreshToken()
   }
 
+  // Only include Content-Type when there is a body — sending it with an
+  // empty PUT causes Spotify to return "string did not match expected pattern"
+  const contentType = options.body !== undefined
+    ? { 'Content-Type': 'application/json' }
+    : {}
+
   const res = await fetch(`https://api.spotify.com/v1${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      ...contentType,
       ...(options.headers ?? {}),
     },
   })
 
   if (res.status === 204 || res.status === 202) return null
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message ?? `Spotify API error ${res.status}`)
+    const raw = await res.text().catch(() => '')
+    console.error('[Spotify] API error', res.status, path, raw)
+    let msg = `Spotify API error ${res.status}`
+    try { msg = JSON.parse(raw)?.error?.message ?? msg } catch {}
+    throw new Error(msg)
   }
   return res.json()
 }
@@ -153,17 +162,13 @@ export async function getCurrentTrack() {
 }
 
 export async function play({ contextUri, deviceId } = {}) {
-  const params  = deviceId ? `?device_id=${deviceId}` : ''
-  // Only set body + Content-Type when we have a context_uri.
-  // Sending Content-Type: application/json with an empty body causes Spotify
-  // to return "The string did not match the expected pattern".
-  const hasBody = !!contextUri
-  const body    = hasBody ? JSON.stringify({ context_uri: contextUri }) : undefined
-  return api(`/me/player/play${params}`, {
-    method:  'PUT',
-    body,
-    headers: hasBody ? {} : { 'Content-Type': 'text/plain' },
-  })
+  const params = deviceId ? `?device_id=${deviceId}` : ''
+  // No body at all when just resuming — api() will omit Content-Type automatically
+  const body   = contextUri ? JSON.stringify({ context_uri: contextUri }) : undefined
+  console.log('[Spotify] play() →', { contextUri, deviceId, hasBody: !!body })
+  const result = await api(`/me/player/play${params}`, { method: 'PUT', body })
+  console.log('[Spotify] play() ← status OK (204/200)')
+  return result
 }
 
 export async function pause(deviceId) {
