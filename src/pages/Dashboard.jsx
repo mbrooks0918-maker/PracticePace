@@ -42,7 +42,7 @@ const NAV = [
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { user, profile: authProfile } = useAuth()
+  const { user, profile: authProfile, signOut } = useAuth()
   const navigate = useNavigate()
 
   // Anonymous Supabase users have is_anonymous === true
@@ -148,11 +148,6 @@ export default function Dashboard() {
       .single()
     if (error) return null
     return data
-  }
-
-  async function signOut() {
-    await supabase.auth.signOut()
-    navigate('/')
   }
 
   function handleSetActive(script) {

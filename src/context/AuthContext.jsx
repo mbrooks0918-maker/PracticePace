@@ -42,8 +42,17 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  async function signOut() {
+    // Clear state immediately so the rest of the app sees no user at once
+    setUser(null)
+    setProfile(null)
+    await supabase.auth.signOut()
+    // Hard redirect — guarantees clean slate regardless of React Router state
+    window.location.replace('/')
+  }
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading }}>
+    <AuthContext.Provider value={{ user, profile, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   )
