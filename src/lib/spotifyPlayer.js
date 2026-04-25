@@ -116,13 +116,42 @@ export function setupSpotifySDK() {
   }
 }
 
+// ── URI / device validation helpers ──────────────────────────────────────────
+/** Convert any Spotify URL or URI to the spotify:type:id format the API requires. */
+function normalizeSpotifyUri(raw) {
+  if (!raw) return undefined
+
+  // Already a proper URI — pass through
+  if (/^spotify:(playlist|album|artist|show|episode|track):[A-Za-z0-9]+$/.test(raw)) {
+    return raw
+  }
+
+  // https://open.spotify.com/playlist/37i9dQZF1DX... → spotify:playlist:37i9dQZF1DX
+  const urlMatch = raw.match(/open\.spotify\.com\/(playlist|album|artist|show|episode|track)\/([A-Za-z0-9]+)/)
+  if (urlMatch) return `spotify:${urlMatch[1]}:${urlMatch[2]}`
+
+  // Unrecognised format — return undefined so the API does a plain resume
+  console.warn('[Spotify] Unrecognised URI format, ignoring context:', raw)
+  return undefined
+}
+
 // ── Playback controls ─────────────────────────────────────────────────────────
 /** Transfer + play. Pass contextUri for a playlist/album, omit to resume. */
 export async function playTrack(contextUri) {
   const id = deviceId
-  if (!id) throw new Error('Spotify device not ready — please wait a moment.')
+
+  // Validate device ID
+  if (!id || typeof id !== 'string' || id.trim() === '') {
+    throw new Error('Spotify device not ready — please wait a moment and try again.')
+  }
+
+  // Normalise URI so URLs and malformed values don't reach the API
+  const uri = normalizeSpotifyUri(contextUri)
+
+  console.log('[Spotify] playTrack →', { uri, deviceId: id })
+
   await transferPlayback(id, false)
-  await apiPlay({ contextUri, deviceId: id })
+  await apiPlay({ contextUri: uri, deviceId: id })
   isPlaying = true
   emit('state', getSnapshot())
 }

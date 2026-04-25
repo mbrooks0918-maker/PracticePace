@@ -153,9 +153,17 @@ export async function getCurrentTrack() {
 }
 
 export async function play({ contextUri, deviceId } = {}) {
-  const params = deviceId ? `?device_id=${deviceId}` : ''
-  const body   = contextUri ? JSON.stringify({ context_uri: contextUri }) : undefined
-  return api(`/me/player/play${params}`, { method: 'PUT', body })
+  const params  = deviceId ? `?device_id=${deviceId}` : ''
+  // Only set body + Content-Type when we have a context_uri.
+  // Sending Content-Type: application/json with an empty body causes Spotify
+  // to return "The string did not match the expected pattern".
+  const hasBody = !!contextUri
+  const body    = hasBody ? JSON.stringify({ context_uri: contextUri }) : undefined
+  return api(`/me/player/play${params}`, {
+    method:  'PUT',
+    body,
+    headers: hasBody ? {} : { 'Content-Type': 'text/plain' },
+  })
 }
 
 export async function pause(deviceId) {
