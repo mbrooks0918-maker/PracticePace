@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 import { getGuestVideos, addGuestVideo, deleteGuestVideo } from '../../lib/guestStorage'
 
 // ── URL detection ─────────────────────────────────────────────────────────────
@@ -8,17 +9,37 @@ function getVideoInfo(rawUrl) {
 
   // YouTube
   const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/)
-  if (yt) return { type: 'youtube', id: yt[1], embedUrl: `https://www.youtube.com/embed/${yt[1]}?autoplay=1`, thumbUrl: `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg` }
+  if (yt) return {
+    type: 'youtube',
+    id: yt[1],
+    embedUrl: `https://www.youtube.com/embed/${yt[1]}?autoplay=1`,
+    thumbUrl: `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`,
+  }
 
   // Vimeo
   const vim = url.match(/vimeo\.com\/(\d+)/)
-  if (vim) return { type: 'vimeo', id: vim[1], embedUrl: `https://player.vimeo.com/video/${vim[1]}?autoplay=1`, thumbUrl: null }
+  if (vim) return {
+    type: 'vimeo',
+    id: vim[1],
+    embedUrl: `https://player.vimeo.com/video/${vim[1]}?autoplay=1`,
+    thumbUrl: null,
+  }
 
   // All others (Hudl, generic links, etc.) — open in browser
   return { type: 'external', id: null, embedUrl: null, thumbUrl: null }
 }
 
-export default function VideoSection({ orgId, orgColor, isGuest }) {
+// Safe hostname extraction — avoids throwing on malformed URLs
+function safeHostname(url) {
+  try { return new URL(url).hostname.replace('www.', '') } catch { return url }
+}
+
+export default function VideoSection({ orgColor, isGuest }) {
+  // Pull org_id and user directly from auth context so we never rely on a
+  // potentially-null prop during the initial render cycle.
+  const { user, profile } = useAuth()
+  const orgId = profile?.org_id
+
   const [videos, setVideos]       = useState([])
   const [loading, setLoading]     = useState(true)
   const [title, setTitle]         = useState('')
@@ -35,7 +56,8 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
     } else if (orgId) {
       load()
     } else {
-      setLoading(false)
+      // Auth not ready yet — keep spinner; effect will re-fire when orgId arrives
+      setLoading(true)
     }
   }, [orgId, isGuest])
 
@@ -48,17 +70,21 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
         .select('*')
         .eq('org_id', orgId)
         .order('created_at', { ascending: false })
+
       if (err) {
-        // Show a helpful message if the table doesn't exist yet
+        const missing = err.message?.includes('does not exist') || err.code === '42P01'
         setError(
-          err.message?.includes('does not exist') || err.code === '42P01'
-            ? 'Videos table not found. Run the schema update in Supabase to enable this feature.'
+          missing
+            ? 'Videos table not found. Run the schema SQL in Supabase to enable this feature.'
             : `Could not load videos: ${err.message}`
         )
+        setVideos([])
+      } else {
+        setVideos(data ?? [])
       }
-      setVideos(data ?? [])
     } catch (e) {
       setError('Failed to load videos.')
+      setVideos([])
     } finally {
       setLoading(false)
     }
@@ -78,11 +104,12 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
 
     try {
       const { error: err } = await supabase.from('videos').insert({
-        org_id: orgId,
-        title:  title.trim(),
-        url:    url.trim(),
+        org_id:     orgId,
+        title:      title.trim(),
+        url:        url.trim(),
+        created_by: user?.id ?? null,   // requires created_by uuid column on videos table
       })
-      if (err) { setError(err.message); setAdding(false); return }
+      if (err) { setError(err.message); return }
       setTitle(''); setUrl('')
       await load()
     } catch (e) {
@@ -98,10 +125,10 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
       setVideos(getGuestVideos())
     } else {
       await supabase.from('videos').delete().eq('id', deleteId)
+      if (!isGuest) load()
     }
     if (playingId === deleteId) setPlayingId(null)
     setDeleteId(null)
-    if (!isGuest) load()
   }
 
   const inputStyle = { backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }
@@ -130,9 +157,10 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
               style={inputStyle}
             />
           </div>
+
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#9a8080' }}>
-              Paste link from Hudl, YouTube, Vimeo, or any video URL
+              Paste a link from Hudl, YouTube, Vimeo, or any video URL
             </label>
             <input
               value={url}
@@ -142,11 +170,12 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
               style={inputStyle}
             />
           </div>
+
           <div className="flex flex-col justify-end gap-1.5">
             {error && <p className="text-xs" style={{ color: '#ff6666' }}>{error}</p>}
             <button
               type="submit"
-              disabled={adding}
+              disabled={adding || (!isGuest && !orgId)}
               className="py-3 rounded-xl text-sm font-bold text-white disabled:opacity-50"
               style={{ backgroundColor: orgColor }}
             >
@@ -162,10 +191,22 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
               style={{ borderColor: orgColor, borderTopColor: 'transparent' }} />
             <p className="text-sm" style={{ color: '#9a8080' }}>Loading videos…</p>
           </div>
+        ) : error && videos.length === 0 ? (
+          /* Table-missing or network error — show message with reload button */
+          <div className="text-center py-16 flex flex-col items-center gap-4">
+            <p className="text-sm max-w-sm leading-relaxed" style={{ color: '#ff6666' }}>{error}</p>
+            <button
+              onClick={load}
+              className="px-5 py-2 rounded-xl text-sm font-bold"
+              style={{ border: `1px solid ${orgColor}`, color: orgColor }}
+            >
+              Try Again
+            </button>
+          </div>
         ) : videos.length === 0 ? (
           <div className="text-center py-20">
             <div style={{ fontSize: 64, opacity: 0.1 }}>🎬</div>
-            <p className="font-bold text-white mt-3 text-lg">No videos yet</p>
+            <p className="font-bold text-white mt-3 text-lg">No videos yet — add one above</p>
             <p className="text-sm mt-1" style={{ color: '#9a8080' }}>
               Paste a Hudl, YouTube, or Vimeo link above to get started.
             </p>
@@ -240,7 +281,7 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
                     >
                       <span style={{ fontSize: 40, opacity: 0.25 }}>🎬</span>
                       <p className="text-xs text-center font-semibold" style={{ color: '#9a8080' }}>
-                        {new URL(v.url).hostname.replace('www.', '')}
+                        {safeHostname(v.url)}
                       </p>
                       <a
                         href={v.url}
@@ -301,7 +342,7 @@ export default function VideoSection({ orgId, orgColor, isGuest }) {
         )}
       </div>
 
-      {/* Delete confirm */}
+      {/* Delete confirm modal */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(0,0,0,0.88)' }}>

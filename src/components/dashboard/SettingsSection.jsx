@@ -4,12 +4,26 @@ import { supabase } from '../../lib/supabase'
 const SPORTS = ['Football','Basketball','Volleyball','Baseball','Softball','Soccer','Track','Wrestling','Tennis','Other']
 const ROLES  = ['admin','coach','readonly']
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Section must live OUTSIDE SettingsSection so React never creates a new
+// component-type reference on each render — that would unmount/remount every
+// child (including focused inputs) on every keystroke.
+// ─────────────────────────────────────────────────────────────────────────────
+function Section({ title, children }) {
+  return (
+    <div className="flex flex-col gap-4 p-5 rounded-2xl"
+      style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+      <h3 className="font-bold text-white text-base">{title}</h3>
+      {children}
+    </div>
+  )
+}
+
 export default function SettingsSection({ org, profile, orgColor, onOrgUpdate }) {
+  // Form only tracks name + sport — color pickers removed (not needed by coaches)
   const [form, setForm] = useState({
-    name:            org?.name            ?? '',
-    sport:           org?.sport           ?? '',
-    primary_color:   org?.primary_color   ?? '#cc1111',
-    secondary_color: org?.secondary_color ?? '#ffffff',
+    name:  org?.name  ?? '',
+    sport: org?.sport ?? '',
   })
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
@@ -29,18 +43,16 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   const [bgSuccess, setBgSuccess]     = useState(false)
   const bgInputRef = useRef(null)
 
-  // Sync form whenever org changes (including initial load)
+  // Sync form whenever org changes (includes initial load when org arrives async)
   useEffect(() => {
     if (org?.id) {
       setForm({
-        name:            org.name            ?? '',
-        sport:           org.sport           ?? '',
-        primary_color:   org.primary_color   ?? '#cc1111',
-        secondary_color: org.secondary_color ?? '#ffffff',
+        name:  org.name  ?? '',
+        sport: org.sport ?? '',
       })
       loadCoaches()
     }
-  }, [org?.id, org?.name, org?.sport, org?.primary_color, org?.secondary_color])
+  }, [org?.id, org?.name, org?.sport])
 
   async function loadCoaches() {
     if (!org?.id) return
@@ -57,7 +69,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
     try {
       const { error: err } = await supabase
         .from('organizations')
-        .update(form)
+        .update({ name: form.name, sport: form.sport })
         .eq('id', org.id)
       if (err) { setSaveErr(err.message); return }
       setSaved(true)
@@ -73,10 +85,23 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   async function uploadBackground(e) {
     const file = e.target.files?.[0]
     if (!file) return
+
+    // Guard: org must be loaded before we can save the URL
+    if (!org?.id) {
+      setBgError('Organization not loaded yet — please wait a moment and try again.')
+      return
+    }
     if (!file.type.startsWith('image/')) { setBgError('Please select an image file.'); return }
     if (file.size > 10 * 1024 * 1024) { setBgError('Image must be under 10 MB.'); return }
 
     setBgUploading(true); setBgError(''); setBgSuccess(false)
+
+    // ── HOW TO CREATE THE BUCKET ────────────────────────────────────────────
+    // 1. Go to Supabase → Storage → New bucket
+    // 2. Name it exactly:  backgrounds
+    // 3. Toggle "Public bucket" ON
+    // 4. Click Create
+    // ────────────────────────────────────────────────────────────────────────
 
     try {
       const ext  = file.name.split('.').pop()
@@ -90,7 +115,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
         const msg = upErr.message ?? ''
         setBgError(
           msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('bucket')
-            ? 'Storage bucket "backgrounds" not found. In Supabase: Storage → New bucket → name it "backgrounds" → make it Public.'
+            ? 'Storage bucket "backgrounds" not found.\n\nTo fix: Supabase → Storage → New bucket → name it "backgrounds" → enable Public → Create.'
             : `Upload failed: ${msg}`
         )
         return
@@ -98,19 +123,19 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
       const { data: urlData } = supabase.storage.from('backgrounds').getPublicUrl(path)
       const publicUrl = urlData?.publicUrl
-      if (!publicUrl) { setBgError('Could not get image URL. Check bucket settings.'); return }
+      if (!publicUrl) { setBgError('Could not get image URL. Check bucket public setting.'); return }
 
       const bgUrl = `${publicUrl}?v=${Date.now()}`
+
       const { error: dbErr } = await supabase
         .from('organizations')
         .update({ background_url: bgUrl })
         .eq('id', org.id)
 
       if (dbErr) {
-        // Column might not exist yet — give actionable message
         setBgError(
           dbErr.message?.includes('background_url')
-            ? 'Add a "background_url text" column to your organizations table in Supabase, then try again.'
+            ? 'Add a "background_url text" column to the organizations table in Supabase, then try again.'
             : `Database error: ${dbErr.message}`
         )
         return
@@ -128,6 +153,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   }
 
   async function clearBackground() {
+    if (!org?.id) return
     const { error } = await supabase
       .from('organizations')
       .update({ background_url: null })
@@ -146,13 +172,13 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
     setInviting(true); setInviteMsg(''); setInviteErr(''); setCopied(false)
 
     try {
-      // Store invite record (if invites table exists) — graceful fallback if not
+      // Store invite record — fire-and-forget, graceful if table missing
       await supabase.from('coach_invites').insert({
         org_id: org.id,
         email:  inviteEmail.trim(),
         name:   inviteName.trim() || null,
         role:   inviteRole,
-      }).then(() => {}) // fire-and-forget, don't throw if table missing
+      }).then(() => {})
 
       const params = new URLSearchParams({
         invite: 'true',
@@ -183,15 +209,6 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
   const inputStyle = { backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }
 
-  function Section({ title, children }) {
-    return (
-      <div className="flex flex-col gap-4 p-5 rounded-2xl" style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
-        <h3 className="font-bold text-white text-base">{title}</h3>
-        {children}
-      </div>
-    )
-  }
-
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6">
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
@@ -213,6 +230,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
                 style={inputStyle}
               />
             </div>
+
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9a8080' }}>Sport</label>
               <select
@@ -224,35 +242,6 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
                 <option value="">Select sport…</option>
                 {SPORTS.map(s => <option key={s} value={s.toLowerCase()}>{s}</option>)}
               </select>
-            </div>
-
-            {/* Colors */}
-            <div className="flex gap-6 flex-wrap">
-              {[['primary_color','Primary'],['secondary_color','Secondary']].map(([key,label]) => (
-                <div key={key} className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9a8080' }}>{label} Color</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={form[key]}
-                      onChange={e => upd(key, e.target.value)}
-                      className="w-12 h-10 rounded cursor-pointer"
-                      style={{ backgroundColor: 'transparent', border: '1px solid #2a0000', padding: 2 }}
-                    />
-                    <span className="text-sm font-mono" style={{ color: '#9a8080' }}>{form[key]}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Live preview */}
-            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: '#1a0000' }}>
-              <span className="text-xs" style={{ color: '#9a8080' }}>Preview</span>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ backgroundColor: form.primary_color }}>
-                <span className="text-sm font-bold" style={{ color: form.secondary_color, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.1em' }}>
-                  PRACTICEPACE
-                </span>
-              </div>
             </div>
 
             {saveErr && (
@@ -276,7 +265,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
               Upload an image that appears behind the clock on the Practice screen.
               Use a{' '}
               <span className="font-semibold text-white">landscape image at least 1366 × 1024 px</span>
-              {' '}(JPG or PNG, max 10 MB). A darker image works best — we add a semi-transparent overlay.
+              {' '}(JPG or PNG, max 10 MB). A darker image works best.
             </p>
 
             {org?.background_url && (
@@ -305,10 +294,10 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
                 htmlFor="bg-upload"
                 className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold cursor-pointer transition-all"
                 style={{
-                  border:           `2px dashed ${bgUploading ? orgColor : '#2a0000'}`,
-                  color:            bgUploading ? orgColor : '#9a8080',
-                  backgroundColor:  '#1a0000',
-                  pointerEvents:    bgUploading ? 'none' : 'auto',
+                  border:          `2px dashed ${bgUploading ? orgColor : '#2a0000'}`,
+                  color:           bgUploading ? orgColor : '#9a8080',
+                  backgroundColor: '#1a0000',
+                  pointerEvents:   bgUploading ? 'none' : 'auto',
                 }}
               >
                 {bgUploading
@@ -318,19 +307,24 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
               </label>
 
               {bgError && (
-                <p className="text-xs rounded-lg px-3 py-2 leading-relaxed" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
+                <p className="text-xs rounded-lg px-3 py-2 leading-relaxed whitespace-pre-line"
+                  style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
                   {bgError}
                 </p>
               )}
               {bgSuccess && (
-                <p className="text-xs rounded-lg px-3 py-2 font-semibold" style={{ backgroundColor: '#001a00', color: '#66cc88' }}>
+                <p className="text-xs rounded-lg px-3 py-2 font-semibold"
+                  style={{ backgroundColor: '#001a00', color: '#66cc88' }}>
                   ✓ Background updated! Switch to the Practice tab to see it.
                 </p>
               )}
             </div>
 
-            <p className="text-xs" style={{ color: '#4a2020' }}>
-              💡 Requires the Supabase Storage "backgrounds" bucket (public) and a{' '}
+            {/* Supabase setup reminder */}
+            <p className="text-xs leading-relaxed" style={{ color: '#4a2020' }}>
+              Requires: Supabase → Storage → New bucket → name{' '}
+              <code className="px-1 rounded" style={{ backgroundColor: '#1a0000', color: '#9a8080' }}>backgrounds</code>
+              {' '}→ Public. Also needs a{' '}
               <code className="px-1 rounded" style={{ backgroundColor: '#1a0000', color: '#9a8080' }}>background_url text</code>
               {' '}column on the organizations table.
             </p>
@@ -374,7 +368,6 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
             <form onSubmit={handleInvite} className="flex flex-col gap-3 pt-3" style={{ borderTop: '1px solid #2a0000' }}>
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#9a8080' }}>Invite Coach</p>
 
-              {/* Name field */}
               <input
                 type="text"
                 value={inviteName}
@@ -422,7 +415,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
               {inviteMsg && (
                 <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ backgroundColor: '#001a00', border: '1px solid #003300' }}>
                   <p className="text-xs font-semibold" style={{ color: '#66cc88' }}>
-                    ✓ Invite link ready — share this with {inviteEmail || 'the coach'}:
+                    ✓ Invite link ready — share with the coach:
                   </p>
                   <p className="text-xs break-all font-mono" style={{ color: '#9a9a9a' }}>{inviteMsg}</p>
                   <button
@@ -457,8 +450,8 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
               ))}
             </div>
           </Section>
-        </div>
 
+        </div>
       </div>
     </div>
   )

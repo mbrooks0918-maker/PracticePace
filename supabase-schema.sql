@@ -287,3 +287,7 @@ create policy "org admins can manage invites"
   on coach_invites for all
   using  (org_id = get_my_org_id() and (select role from profiles where id = auth.uid()) = 'admin')
   with check (org_id = get_my_org_id() and (select role from profiles where id = auth.uid()) = 'admin');
+
+-- 5. Add created_by to videos (run if the videos table already exists)
+alter table videos
+  add column if not exists created_by uuid references profiles(id) on delete set null;
