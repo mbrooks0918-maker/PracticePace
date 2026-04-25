@@ -58,8 +58,8 @@ export function getGuestVideos() {
   return readJSON(VIDEOS_KEY, [])
 }
 
-export function addGuestVideo({ title, url }) {
-  const video = { id: uid(), title, url, created_at: new Date().toISOString() }
+export function addGuestVideo({ name, url }) {
+  const video = { id: uid(), name, url, created_at: new Date().toISOString() }
   const next  = [video, ...getGuestVideos()]
   localStorage.setItem(VIDEOS_KEY, JSON.stringify(next))
   return video

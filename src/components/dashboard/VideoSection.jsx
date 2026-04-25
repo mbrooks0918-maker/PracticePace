@@ -25,7 +25,7 @@ function getVideoInfo(rawUrl) {
     thumbUrl: null,
   }
 
-  // All others (Hudl, generic links, etc.) — open in browser
+  // All others (Hudl, generic links, etc.) — must open in browser
   return { type: 'external', id: null, embedUrl: null, thumbUrl: null }
 }
 
@@ -34,10 +34,10 @@ function safeHostname(url) {
   try { return new URL(url).hostname.replace('www.', '') } catch { return url }
 }
 
+// Per-org localStorage cache so the list shows instantly on tab return
+function videoCacheKey(orgId) { return `pp_video_cache_${orgId}` }
+
 export default function VideoSection({ orgColor, isGuest }) {
-  // Pull org_id, user, and the auth-loading flag directly from context.
-  // authLoading = true while Supabase session is still being resolved.
-  // We need it to distinguish "still loading" from "loaded but no org".
   const { user, profile, loading: authLoading } = useAuth()
   const orgId = profile?.org_id
 
@@ -50,26 +50,37 @@ export default function VideoSection({ orgColor, isGuest }) {
   const [playingId, setPlayingId] = useState(null)
   const [deleteId, setDeleteId]   = useState(null)
 
+  // Runs on every mount (including tab return) and whenever orgId/isGuest changes.
   useEffect(() => {
     if (isGuest) {
-      // Guest mode — read from localStorage immediately
       setVideos(getGuestVideos())
       setLoading(false)
-    } else if (orgId) {
-      // Org loaded — fetch from Supabase
-      load()
-    } else if (!authLoading) {
-      // Auth finished loading but no org_id — shouldn't normally happen,
-      // but stop the spinner so the user isn't stuck.
-      setLoading(false)
+      return
     }
-    // else: authLoading is true and orgId is not yet known — keep spinner,
-    // this effect will re-fire when authLoading becomes false or orgId arrives.
+    if (orgId) {
+      // Restore cached list immediately so the UI isn't blank while fetching.
+      // This is the key to "persisting" across tab switches — the data is always
+      // in localStorage even though React state is reset on unmount.
+      try {
+        const raw = localStorage.getItem(videoCacheKey(orgId))
+        if (raw) {
+          setVideos(JSON.parse(raw))
+          setLoading(false)   // show cached list right away
+        }
+      } catch {}
+      load()   // always fetch fresh on every mount
+      return
+    }
+    if (!authLoading) {
+      setLoading(false)   // auth done, no org — stop spinner
+    }
   }, [orgId, isGuest, authLoading])
 
   async function load() {
-    if (!orgId) return          // never query without a valid org_id
-    setLoading(true)
+    if (!orgId) return
+    // Only show the spinner if we have nothing cached to display yet
+    const hasCached = !!localStorage.getItem(videoCacheKey(orgId))
+    if (!hasCached) setLoading(true)
     setError('')
     try {
       const { data, error: err } = await supabase
@@ -85,13 +96,16 @@ export default function VideoSection({ orgColor, isGuest }) {
             ? 'Videos table not found. Run the schema SQL in Supabase to enable this feature.'
             : `Could not load videos: ${err.message}`
         )
-        setVideos([])
+        if (!hasCached) setVideos([])
       } else {
-        setVideos(data ?? [])
+        const list = data ?? []
+        setVideos(list)
+        // Cache for instant restore on next tab visit
+        localStorage.setItem(videoCacheKey(orgId), JSON.stringify(list))
       }
     } catch (e) {
       setError('Failed to load videos.')
-      setVideos([])
+      if (!hasCached) setVideos([])
     } finally {
       setLoading(false)
     }
@@ -112,33 +126,22 @@ export default function VideoSection({ orgColor, isGuest }) {
     }
 
     try {
-      console.log('[addVideo] inserting', { orgId, name: name.trim(), url: url.trim() })
       const { error: err } = await supabase.from('videos').insert({
         org_id: orgId,
         name:   name.trim(),
         url:    url.trim(),
-        // created_by omitted — add column first:
-        //   ALTER TABLE videos ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES profiles(id) ON DELETE SET NULL;
       })
-      console.log('[addVideo] result error:', err)
-      if (err) {
-        setError(err.message)
-        return
-      }
-      // Success — clear inputs
+      if (err) { setError(err.message); return }
       setName('')
       setUrl('')
     } catch (e) {
-      console.error('[addVideo] caught exception:', e)
       setError(e.message ?? 'Failed to save video.')
     } finally {
-      // Always re-enable the button — do NOT await load() here because if
-      // load() hangs it would hold setAdding(true) hostage forever.
+      // Re-enable button immediately — load() below must NOT be awaited here
       setAdding(false)
     }
 
-    // Refresh list after button re-enables (fire-and-forget)
-    load()
+    load()   // refresh list (fire-and-forget so it can't block the button)
   }
 
   async function deleteVideo() {
@@ -147,7 +150,7 @@ export default function VideoSection({ orgColor, isGuest }) {
       setVideos(getGuestVideos())
     } else {
       await supabase.from('videos').delete().eq('id', deleteId)
-      if (!isGuest) load()
+      load()
     }
     if (playingId === deleteId) setPlayingId(null)
     setDeleteId(null)
@@ -161,7 +164,7 @@ export default function VideoSection({ orgColor, isGuest }) {
 
         <h2 className="font-black text-white text-lg">Video Library</h2>
 
-        {/* Add form */}
+        {/* ── Add form ── */}
         <form
           onSubmit={addVideo}
           className="grid grid-cols-1 md:grid-cols-3 gap-3 p-5 rounded-2xl"
@@ -169,7 +172,7 @@ export default function VideoSection({ orgColor, isGuest }) {
         >
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#9a8080' }}>
-              Video Title
+              Video Name
             </label>
             <input
               value={name}
@@ -206,7 +209,7 @@ export default function VideoSection({ orgColor, isGuest }) {
           </div>
         </form>
 
-        {/* List */}
+        {/* ── Video list ── */}
         {loading ? (
           <div className="flex flex-col items-center gap-3 py-16">
             <div className="w-8 h-8 rounded-full border-2 animate-spin"
@@ -214,14 +217,10 @@ export default function VideoSection({ orgColor, isGuest }) {
             <p className="text-sm" style={{ color: '#9a8080' }}>Loading videos…</p>
           </div>
         ) : error && videos.length === 0 ? (
-          /* Table-missing or network error — show message with reload button */
           <div className="text-center py-16 flex flex-col items-center gap-4">
             <p className="text-sm max-w-sm leading-relaxed" style={{ color: '#ff6666' }}>{error}</p>
-            <button
-              onClick={load}
-              className="px-5 py-2 rounded-xl text-sm font-bold"
-              style={{ border: `1px solid ${orgColor}`, color: orgColor }}
-            >
+            <button onClick={load} className="px-5 py-2 rounded-xl text-sm font-bold"
+              style={{ border: `1px solid ${orgColor}`, color: orgColor }}>
               Try Again
             </button>
           </div>
@@ -234,7 +233,8 @@ export default function VideoSection({ orgColor, isGuest }) {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          // Single-column full-width cards — player fills the entire content width
+          <div className="flex flex-col gap-4">
             {videos.map(v => {
               const info      = getVideoInfo(v.url)
               const isPlaying = playingId === v.id
@@ -246,9 +246,11 @@ export default function VideoSection({ orgColor, isGuest }) {
                   className="rounded-2xl overflow-hidden flex flex-col"
                   style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000' }}
                 >
-                  {/* Player / thumbnail */}
+                  {/* ── Video area — 100% width, 16:9 aspect ratio ── */}
                   {isPlaying && canEmbed ? (
-                    <div style={{ aspectRatio: '16/9' }}>
+                    // Embedded player: full card width, proper 16:9 height
+                    // aspect-video = aspect-ratio: 16/9 in Tailwind
+                    <div className="w-full aspect-video">
                       <iframe
                         src={info.embedUrl}
                         className="w-full h-full"
@@ -257,7 +259,9 @@ export default function VideoSection({ orgColor, isGuest }) {
                         title={v.name}
                       />
                     </div>
+
                   ) : info.type === 'youtube' ? (
+                    // YouTube: show thumbnail, click plays INLINE (no new tab)
                     <button
                       onClick={() => setPlayingId(v.id)}
                       className="w-full relative block"
@@ -271,37 +275,42 @@ export default function VideoSection({ orgColor, isGuest }) {
                       />
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div
-                          className="w-20 h-20 rounded-full flex items-center justify-center"
-                          style={{ backgroundColor: orgColor, boxShadow: `0 0 40px ${orgColor}66` }}
+                          className="w-24 h-24 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: orgColor, boxShadow: `0 0 60px ${orgColor}88` }}
                         >
-                          <span className="text-white text-3xl" style={{ marginLeft: 5 }}>▶</span>
+                          <span className="text-white text-4xl" style={{ marginLeft: 6 }}>▶</span>
                         </div>
                       </div>
                     </button>
+
                   ) : info.type === 'vimeo' ? (
+                    // Vimeo: play button, click plays INLINE (no new tab)
                     <button
                       onClick={() => setPlayingId(v.id)}
                       className="w-full relative flex items-center justify-center"
                       style={{ aspectRatio: '16/9', backgroundColor: '#1ab7ea22' }}
                     >
                       <div
-                        className="w-20 h-20 rounded-full flex items-center justify-center"
-                        style={{ backgroundColor: '#1ab7ea', boxShadow: '0 0 40px #1ab7ea66' }}
+                        className="w-24 h-24 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: '#1ab7ea', boxShadow: '0 0 60px #1ab7ea88' }}
                       >
-                        <span className="text-white text-3xl" style={{ marginLeft: 5 }}>▶</span>
+                        <span className="text-white text-4xl" style={{ marginLeft: 6 }}>▶</span>
                       </div>
-                      <span className="absolute bottom-3 right-3 text-xs font-bold px-2 py-1 rounded"
-                        style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#1ab7ea' }}>
+                      <span
+                        className="absolute bottom-3 right-3 text-xs font-bold px-2 py-1 rounded"
+                        style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#1ab7ea' }}
+                      >
                         Vimeo
                       </span>
                     </button>
+
                   ) : (
-                    /* External / Hudl — can't embed, show open-in-browser */
+                    // External / Hudl — cannot embed, open in browser is the only option
                     <div
-                      className="flex flex-col items-center justify-center gap-3 p-6"
+                      className="flex flex-col items-center justify-center gap-3 p-8"
                       style={{ aspectRatio: '16/9', backgroundColor: '#0d0000' }}
                     >
-                      <span style={{ fontSize: 40, opacity: 0.25 }}>🎬</span>
+                      <span style={{ fontSize: 48, opacity: 0.2 }}>🎬</span>
                       <p className="text-xs text-center font-semibold" style={{ color: '#9a8080' }}>
                         {safeHostname(v.url)}
                       </p>
@@ -309,7 +318,7 @@ export default function VideoSection({ orgColor, isGuest }) {
                         href={v.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-4 py-2 rounded-lg text-sm font-bold"
+                        className="px-5 py-2.5 rounded-lg text-sm font-bold"
                         style={{ backgroundColor: `${orgColor}22`, border: `1px solid ${orgColor}`, color: orgColor }}
                       >
                         Open in Browser ↗
@@ -317,7 +326,7 @@ export default function VideoSection({ orgColor, isGuest }) {
                     </div>
                   )}
 
-                  {/* Info row */}
+                  {/* ── Info row ── */}
                   <div className="flex items-center gap-2 px-4 py-3">
                     <p className="font-bold text-white text-sm truncate flex-1">{v.name}</p>
                     <div className="flex items-center gap-2 shrink-0">
@@ -339,15 +348,19 @@ export default function VideoSection({ orgColor, isGuest }) {
                           ✕ Close
                         </button>
                       )}
-                      <a
-                        href={v.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-bold px-3 py-2 rounded-lg"
-                        style={{ border: '1px solid #2a0000', color: '#9a8080' }}
-                      >
-                        ↗
-                      </a>
+                      {/* External link only for non-embeddable videos.
+                          YouTube and Vimeo always play inline — no new tab. */}
+                      {!canEmbed && (
+                        <a
+                          href={v.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-bold px-3 py-2 rounded-lg"
+                          style={{ border: '1px solid #2a0000', color: '#9a8080' }}
+                        >
+                          ↗
+                        </a>
+                      )}
                       <button
                         onClick={() => setDeleteId(v.id)}
                         className="text-xs px-3 py-2 rounded-lg"
@@ -364,7 +377,7 @@ export default function VideoSection({ orgColor, isGuest }) {
         )}
       </div>
 
-      {/* Delete confirm modal */}
+      {/* ── Delete confirm modal ── */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(0,0,0,0.88)' }}>
