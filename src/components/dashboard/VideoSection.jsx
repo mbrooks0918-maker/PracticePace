@@ -35,9 +35,10 @@ function safeHostname(url) {
 }
 
 export default function VideoSection({ orgColor, isGuest }) {
-  // Pull org_id and user directly from auth context so we never rely on a
-  // potentially-null prop during the initial render cycle.
-  const { user, profile } = useAuth()
+  // Pull org_id, user, and the auth-loading flag directly from context.
+  // authLoading = true while Supabase session is still being resolved.
+  // We need it to distinguish "still loading" from "loaded but no org".
+  const { user, profile, loading: authLoading } = useAuth()
   const orgId = profile?.org_id
 
   const [videos, setVideos]       = useState([])
@@ -51,17 +52,23 @@ export default function VideoSection({ orgColor, isGuest }) {
 
   useEffect(() => {
     if (isGuest) {
+      // Guest mode — read from localStorage immediately
       setVideos(getGuestVideos())
       setLoading(false)
     } else if (orgId) {
+      // Org loaded — fetch from Supabase
       load()
-    } else {
-      // Auth not ready yet — keep spinner; effect will re-fire when orgId arrives
-      setLoading(true)
+    } else if (!authLoading) {
+      // Auth finished loading but no org_id — shouldn't normally happen,
+      // but stop the spinner so the user isn't stuck.
+      setLoading(false)
     }
-  }, [orgId, isGuest])
+    // else: authLoading is true and orgId is not yet known — keep spinner,
+    // this effect will re-fire when authLoading becomes false or orgId arrives.
+  }, [orgId, isGuest, authLoading])
 
   async function load() {
+    if (!orgId) return          // never query without a valid org_id
     setLoading(true)
     setError('')
     try {
@@ -93,6 +100,7 @@ export default function VideoSection({ orgColor, isGuest }) {
   async function addVideo(e) {
     e.preventDefault()
     if (!title.trim() || !url.trim()) { setError('Title and URL are required.'); return }
+    if (!isGuest && !orgId) { setError('Organization not loaded — please wait and try again.'); return }
     setAdding(true); setError('')
 
     if (isGuest) {

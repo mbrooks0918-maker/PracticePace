@@ -1,3 +1,14 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPABASE STORAGE SETUP (one-time, do this before using background upload):
+//   1. Go to your Supabase project → Storage → New bucket
+//   2. Name it exactly:  backgrounds
+//   3. Toggle "Public bucket" ON
+//   4. Click Create
+//
+// Also run this SQL if you haven't already:
+//   ALTER TABLE organizations ADD COLUMN IF NOT EXISTS background_url text;
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 
@@ -65,6 +76,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   }
 
   async function saveSettings() {
+    if (!org?.id) { setSaveErr('Organization not loaded — please try again.'); return }
     setSaving(true); setSaved(false); setSaveErr('')
     try {
       const { error: err } = await supabase
@@ -168,7 +180,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
   async function handleInvite(e) {
     e.preventDefault()
-    if (!inviteEmail.trim()) return
+    if (!inviteEmail.trim() || !org?.id) return
     setInviting(true); setInviteMsg(''); setInviteErr(''); setCopied(false)
 
     try {
@@ -208,6 +220,23 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   function upd(key, val) { setForm(f => ({ ...f, [key]: val })) }
 
   const inputStyle = { backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }
+
+  // ── Loading guard ────────────────────────────────────────────────────────────
+  // org arrives asynchronously from context. Render nothing meaningful until it
+  // lands — every function below touches org.id and will crash on null.
+  if (!org) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div
+            className="w-8 h-8 rounded-full border-2 animate-spin"
+            style={{ borderColor: orgColor, borderTopColor: 'transparent' }}
+          />
+          <p className="text-sm" style={{ color: '#9a8080' }}>Loading settings…</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6">
