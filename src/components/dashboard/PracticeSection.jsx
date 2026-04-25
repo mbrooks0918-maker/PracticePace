@@ -295,7 +295,7 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
         <div
           className="flex-1 min-h-0 flex items-center justify-center rounded-3xl"
           style={{
-            backgroundColor: backgroundUrl ? 'rgba(8,0,0,0.82)' : '#080000',
+            backgroundColor: 'transparent',
             border: `3px solid ${color}`,
             boxShadow: `0 0 80px ${color}55, inset 0 0 60px ${color}11`,
             transition: 'border-color 0.6s, box-shadow 0.6s',
