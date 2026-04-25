@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 
 const SPORTS = ['Football','Basketball','Volleyball','Baseball','Softball','Soccer','Track','Wrestling','Tennis','Other']
 const ROLES  = ['admin','coach','readonly']
@@ -31,6 +32,8 @@ function Section({ title, children }) {
 }
 
 export default function SettingsSection({ org, profile, orgColor, onOrgUpdate }) {
+  const { loading: authLoading } = useAuth()
+
   // Form only tracks name + sport — color pickers removed (not needed by coaches)
   const [form, setForm] = useState({
     name:  org?.name  ?? '',
@@ -222,9 +225,10 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   const inputStyle = { backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }
 
   // ── Loading guard ────────────────────────────────────────────────────────────
-  // org arrives asynchronously from context. Render nothing meaningful until it
-  // lands — every function below touches org.id and will crash on null.
-  if (!org) {
+  // Spin ONLY while auth is actively resolving. Once authLoading flips to false,
+  // show the form regardless — if org is still null the fields are just empty and
+  // every mutating function has its own !org?.id guard so nothing will crash.
+  if (!org && authLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">

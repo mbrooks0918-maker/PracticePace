@@ -106,25 +106,39 @@ export default function VideoSection({ orgColor, isGuest }) {
     if (isGuest) {
       addGuestVideo({ title: title.trim(), url: url.trim() })
       setVideos(getGuestVideos())
-      setTitle(''); setUrl(''); setAdding(false)
+      setTitle(''); setUrl('')
+      setAdding(false)
       return
     }
 
     try {
+      console.log('[addVideo] inserting', { orgId, title: title.trim(), url: url.trim() })
       const { error: err } = await supabase.from('videos').insert({
-        org_id:     orgId,
-        title:      title.trim(),
-        url:        url.trim(),
-        created_by: user?.id ?? null,   // requires created_by uuid column on videos table
+        org_id: orgId,
+        title:  title.trim(),
+        url:    url.trim(),
+        // created_by omitted — add column first:
+        //   ALTER TABLE videos ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES profiles(id) ON DELETE SET NULL;
       })
-      if (err) { setError(err.message); return }
-      setTitle(''); setUrl('')
-      await load()
+      console.log('[addVideo] result error:', err)
+      if (err) {
+        setError(err.message)
+        return
+      }
+      // Success — clear inputs
+      setTitle('')
+      setUrl('')
     } catch (e) {
-      setError('Failed to save video.')
+      console.error('[addVideo] caught exception:', e)
+      setError(e.message ?? 'Failed to save video.')
     } finally {
+      // Always re-enable the button — do NOT await load() here because if
+      // load() hangs it would hold setAdding(true) hostage forever.
       setAdding(false)
     }
+
+    // Refresh list after button re-enables (fire-and-forget)
+    load()
   }
 
   async function deleteVideo() {
