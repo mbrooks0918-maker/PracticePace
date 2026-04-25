@@ -43,7 +43,7 @@ export default function VideoSection({ orgColor, isGuest }) {
 
   const [videos, setVideos]       = useState([])
   const [loading, setLoading]     = useState(true)
-  const [title, setTitle]         = useState('')
+  const [name, setName]           = useState('')
   const [url, setUrl]             = useState('')
   const [adding, setAdding]       = useState(false)
   const [error, setError]         = useState('')
@@ -99,23 +99,23 @@ export default function VideoSection({ orgColor, isGuest }) {
 
   async function addVideo(e) {
     e.preventDefault()
-    if (!title.trim() || !url.trim()) { setError('Title and URL are required.'); return }
+    if (!name.trim() || !url.trim()) { setError('Name and URL are required.'); return }
     if (!isGuest && !orgId) { setError('Organization not loaded — please wait and try again.'); return }
     setAdding(true); setError('')
 
     if (isGuest) {
-      addGuestVideo({ title: title.trim(), url: url.trim() })
+      addGuestVideo({ name: name.trim(), url: url.trim() })
       setVideos(getGuestVideos())
-      setTitle(''); setUrl('')
+      setName(''); setUrl('')
       setAdding(false)
       return
     }
 
     try {
-      console.log('[addVideo] inserting', { orgId, title: title.trim(), url: url.trim() })
+      console.log('[addVideo] inserting', { orgId, name: name.trim(), url: url.trim() })
       const { error: err } = await supabase.from('videos').insert({
         org_id: orgId,
-        title:  title.trim(),
+        name:   name.trim(),
         url:    url.trim(),
         // created_by omitted — add column first:
         //   ALTER TABLE videos ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES profiles(id) ON DELETE SET NULL;
@@ -126,7 +126,7 @@ export default function VideoSection({ orgColor, isGuest }) {
         return
       }
       // Success — clear inputs
-      setTitle('')
+      setName('')
       setUrl('')
     } catch (e) {
       console.error('[addVideo] caught exception:', e)
@@ -172,8 +172,8 @@ export default function VideoSection({ orgColor, isGuest }) {
               Video Title
             </label>
             <input
-              value={title}
-              onChange={e => setTitle(e.target.value)}
+              value={name}
+              onChange={e => setName(e.target.value)}
               placeholder="Film Session — Week 3"
               className="rounded-xl px-4 py-3 text-sm outline-none"
               style={inputStyle}
@@ -254,7 +254,7 @@ export default function VideoSection({ orgColor, isGuest }) {
                         className="w-full h-full"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
-                        title={v.title}
+                        title={v.name}
                       />
                     </div>
                   ) : info.type === 'youtube' ? (
@@ -265,7 +265,7 @@ export default function VideoSection({ orgColor, isGuest }) {
                     >
                       <img
                         src={info.thumbUrl}
-                        alt={v.title}
+                        alt={v.name}
                         className="w-full h-full object-cover"
                         style={{ opacity: 0.5 }}
                       />
@@ -319,7 +319,7 @@ export default function VideoSection({ orgColor, isGuest }) {
 
                   {/* Info row */}
                   <div className="flex items-center gap-2 px-4 py-3">
-                    <p className="font-bold text-white text-sm truncate flex-1">{v.title}</p>
+                    <p className="font-bold text-white text-sm truncate flex-1">{v.name}</p>
                     <div className="flex items-center gap-2 shrink-0">
                       {canEmbed && !isPlaying && (
                         <button
