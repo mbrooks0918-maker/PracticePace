@@ -80,20 +80,30 @@ export default function Dashboard() {
     }
 
     // ── Authenticated path: Supabase ─────────────────────────────────────────
-    // Fetch full profile + org in one query, but fall back to contextOrgId
-    // (from AuthContext) if the join fails due to RLS or missing FK.
+    // Fetch profile first, then fetch org explicitly by org_id.
+    // We do NOT use the nested organizations(*) join because PostgREST can
+    // return null for it silently if the FK schema cache hasn't refreshed.
     const { data: prof } = await supabase
       .from('profiles')
-      .select('id, org_id, full_name, email, role, organizations(*)')
+      .select('id, org_id, full_name, email, role')
       .eq('id', user.id)
       .single()
 
     setProfile(prof ?? null)
-    const orgData = prof?.organizations ?? null
-    setOrg(orgData)
 
-    // Use org_id from the profile row directly — more reliable than the join
     const resolvedOrgId = prof?.org_id ?? contextOrgId
+
+    // Explicit org fetch — always reliable, never depends on FK join caching
+    let orgData = null
+    if (resolvedOrgId) {
+      const { data: orgFetch } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', resolvedOrgId)
+        .single()
+      orgData = orgFetch ?? null
+    }
+    setOrg(orgData)
 
     if (resolvedOrgId) {
       const list = await loadScripts(resolvedOrgId)
