@@ -11,7 +11,6 @@ import {
   next   as apiNext,
   previous as apiPrevious,
   setVolume as apiSetVolume,
-  getCurrentTrack,
 } from './spotify.js'
 
 const DEVICE_KEY = 'pp_spotify_device_id'

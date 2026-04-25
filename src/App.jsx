@@ -16,7 +16,7 @@ import { setupSpotifySDK } from './lib/spotifyPlayer'
 export default function App() {
   // Initialize the Spotify SDK singleton once on app load.
   // The player lives at module level and never unmounts with components.
-  useEffect(() => { setupSpotifySDK() }, [])
+  useEffect(() => { try { setupSpotifySDK() } catch {} }, [])
 
   return (
     <BrowserRouter>
