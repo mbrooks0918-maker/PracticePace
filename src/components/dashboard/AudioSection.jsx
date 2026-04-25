@@ -111,35 +111,44 @@ function Toggle({ label, value, onChange, orgColor }) {
 }
 
 // ── Spotify Player ────────────────────────────────────────────────────────────
-function SpotifyPlayer({ orgColor }) {
-  const [isReady,        setIsReady]        = useState(false)
-  const [deviceId,       setDeviceId]       = useState(null)
-  const [isPlaying,      setIsPlaying]      = useState(false)
-  const [currentTrack,   setCurrentTrack]   = useState(null)
-  const [volume,         setVolumeState]    = useState(50)
-  const [playlists,      setPlaylists]      = useState([])
-  const [selectedUri,    setSelectedUri]    = useState('')
-  const [loadingLists,   setLoadingLists]   = useState(true)
-  const [error,          setError]          = useState('')
-  const [sdkError,       setSdkError]       = useState('')
+const DEVICE_KEY = 'pp_spotify_device_id'
 
-  const playerRef    = useRef(null)
-  const pollRef      = useRef(null)
+function SpotifyPlayer({ orgColor }) {
+  // Restore device_id from localStorage so it survives tab switches
+  const [isReady,      setIsReady]      = useState(false)
+  const [deviceId,     setDeviceId]     = useState(() => localStorage.getItem(DEVICE_KEY))
+  const [isPlaying,    setIsPlaying]    = useState(false)
+  const [currentTrack, setCurrentTrack] = useState(null)
+  const [volume,       setVolumeState]  = useState(50)
+  const [playlists,    setPlaylists]    = useState([])
+  const [selectedUri,  setSelectedUri]  = useState('')
+  const [loadingLists, setLoadingLists] = useState(true)
+  const [error,        setError]        = useState('')
+  const [sdkError,     setSdkError]     = useState('')
+  const [waiting,      setWaiting]      = useState(false) // "please wait" retry state
+
+  const playerRef  = useRef(null)
+  const pollRef    = useRef(null)
+  const deviceRef  = useRef(deviceId)   // always-current ref for async callbacks
+
+  useEffect(() => { deviceRef.current = deviceId }, [deviceId])
 
   // ── Initialize Web Playback SDK ───────────────────────────────────────────
   useEffect(() => {
-    // Ensure token is valid before initializing
     async function getToken() {
       try {
         if (isTokenExpired()) await refreshToken()
         return getStoredToken()
-      } catch {
-        return null
-      }
+      } catch { return null }
     }
 
     function initPlayer() {
-      if (!window.Spotify) { setSdkError('Spotify SDK not loaded. Please refresh the page.'); return }
+      if (!window.Spotify) {
+        setSdkError('Spotify SDK not loaded — please refresh the page.')
+        return
+      }
+      // Avoid creating a second player if one already exists
+      if (playerRef.current) return
 
       const player = new window.Spotify.Player({
         name: 'PracticePace',
@@ -148,14 +157,19 @@ function SpotifyPlayer({ orgColor }) {
       })
 
       player.addListener('ready', ({ device_id }) => {
+        // Persist so we survive tab switches without waiting again
+        localStorage.setItem(DEVICE_KEY, device_id)
+        deviceRef.current = device_id
         setDeviceId(device_id)
         setIsReady(true)
-        // Transfer playback to this device (don't auto-start)
+        setWaiting(false)
+        // Silently claim this device — don't start playing
         transferPlayback(device_id, false).catch(() => {})
       })
 
-      player.addListener('not_ready', () => {
+      player.addListener('not_ready', ({ device_id }) => {
         setIsReady(false)
+        // Don't clear localStorage — we'll reconnect with the same device_id
       })
 
       player.addListener('player_state_changed', state => {
@@ -164,23 +178,26 @@ function SpotifyPlayer({ orgColor }) {
         const track = state.track_window?.current_track
         if (track) {
           setCurrentTrack({
-            name:    track.name,
-            artist:  track.artists?.map(a => a.name).join(', '),
-            album:   track.album?.name,
-            art:     track.album?.images?.[0]?.url ?? null,
+            name:   track.name,
+            artist: track.artists?.map(a => a.name).join(', '),
+            album:  track.album?.name,
+            art:    track.album?.images?.[0]?.url ?? null,
           })
         }
       })
 
       player.addListener('initialization_error', ({ message }) => setSdkError(message))
-      player.addListener('authentication_error', ({ message }) => setSdkError(message))
-      player.addListener('account_error',        ({ message }) => setSdkError('Spotify Premium is required for playback. ' + message))
+      player.addListener('authentication_error',  ({ message }) => setSdkError(message))
+      player.addListener('account_error',         ({ message }) =>
+        setSdkError('Spotify Premium is required for in-app playback. ' + message)
+      )
 
       player.connect()
       playerRef.current = player
     }
 
-    // SDK calls window.onSpotifyWebPlaybackSDKReady when loaded
+    // window.onSpotifyWebPlaybackSDKReady is the official entry point.
+    // If the SDK already loaded (e.g. on tab re-visit), call initPlayer directly.
     if (window.Spotify) {
       initPlayer()
     } else {
@@ -188,7 +205,10 @@ function SpotifyPlayer({ orgColor }) {
     }
 
     return () => {
-      if (playerRef.current) { playerRef.current.disconnect(); playerRef.current = null }
+      if (playerRef.current) {
+        playerRef.current.disconnect()
+        playerRef.current = null
+      }
       if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [])
@@ -222,43 +242,72 @@ function SpotifyPlayer({ orgColor }) {
       .catch(e   => { setError(e.message); setLoadingLists(false) })
   }, [])
 
-  // ── Controls ──────────────────────────────────────────────────────────────
-  async function handlePlayPause() {
-    try {
-      if (isPlaying) {
-        await pause(deviceId)
-        setIsPlaying(false)
-      } else {
-        if (selectedUri) {
-          await play({ contextUri: selectedUri, deviceId })
+  // ── Safe play helper: transfer → play ────────────────────────────────────
+  // Always transfers playback to PracticePace first so Spotify knows the device.
+  async function safePLayWithUri(contextUri) {
+    const id = deviceRef.current
+    if (!id) {
+      // Not ready yet — show message and retry once after 2s
+      setWaiting(true)
+      setError('')
+      setTimeout(async () => {
+        const retryId = deviceRef.current
+        if (retryId) {
+          try {
+            await transferPlayback(retryId, false)
+            await play({ contextUri, deviceId: retryId })
+            setIsPlaying(true)
+          } catch (e) { setError(e.message) }
         } else {
-          await play({ deviceId })
+          setError('Device still not ready — please wait a moment and try again.')
         }
-        setIsPlaying(true)
-      }
+        setWaiting(false)
+      }, 2000)
+      return
+    }
+    try {
+      // Claim the device first, then start playback
+      await transferPlayback(id, false)
+      await play({ contextUri, deviceId: id })
+      setIsPlaying(true)
+      setError('')
     } catch (e) { setError(e.message) }
   }
 
-  async function handleNext()     { try { await next(deviceId)     } catch (e) { setError(e.message) } }
-  async function handlePrevious() { try { await previous(deviceId) } catch (e) { setError(e.message) } }
+  // ── Controls ──────────────────────────────────────────────────────────────
+  async function handlePlayPause() {
+    const id = deviceRef.current
+    try {
+      if (isPlaying) {
+        await pause(id)
+        setIsPlaying(false)
+      } else {
+        await transferPlayback(id, false)
+        await play({ contextUri: selectedUri || undefined, deviceId: id })
+        setIsPlaying(true)
+      }
+      setError('')
+    } catch (e) { setError(e.message) }
+  }
+
+  async function handleNext()     { try { await next(deviceRef.current);     setError('') } catch (e) { setError(e.message) } }
+  async function handlePrevious() { try { await previous(deviceRef.current); setError('') } catch (e) { setError(e.message) } }
 
   async function handleVolume(v) {
     setVolumeState(v)
-    try { await setVolume(v, deviceId) } catch { /* ignore */ }
+    try { await setVolume(v, deviceRef.current) } catch { /* ignore */ }
     if (playerRef.current) playerRef.current.setVolume(v / 100).catch(() => {})
   }
 
   async function handlePlaylistSelect(uri) {
     setSelectedUri(uri)
     if (!uri) return
-    try {
-      await play({ contextUri: uri, deviceId })
-      setIsPlaying(true)
-    } catch (e) { setError(e.message) }
+    await safePLayWithUri(uri)
   }
 
   function handleDisconnect() {
     if (playerRef.current) playerRef.current.disconnect()
+    localStorage.removeItem(DEVICE_KEY)
     clearTokens()
     window.location.reload()
   }
@@ -279,25 +328,34 @@ function SpotifyPlayer({ orgColor }) {
   return (
     <div className="flex flex-col gap-4">
 
-      {/* ── Not yet ready ── */}
-      {!isReady && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000' }}>
+      {/* ── Device status banner ── */}
+      {waiting ? (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+          style={{ backgroundColor: '#1a1a00', border: '1px solid #3a3a00' }}>
+          <div className="w-4 h-4 rounded-full border-2 animate-spin flex-shrink-0"
+            style={{ borderColor: '#f59e0b', borderTopColor: 'transparent' }} />
+          <p className="text-xs font-semibold" style={{ color: '#f59e0b' }}>
+            Connecting to Spotify… please wait
+          </p>
+        </div>
+      ) : !isReady ? (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+          style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000' }}>
           <div className="w-4 h-4 rounded-full border-2 animate-spin flex-shrink-0"
             style={{ borderColor: SPOTIFY_GREEN, borderTopColor: 'transparent' }} />
-          <p className="text-xs" style={{ color: '#9a8080' }}>Connecting to Spotify device…</p>
+          <p className="text-xs" style={{ color: '#9a8080' }}>
+            Starting PracticePace player…
+          </p>
         </div>
-      )}
+      ) : null}
 
       {/* ── Now playing card ── */}
-      <div
-        className="flex items-center gap-4 p-4 rounded-2xl"
-        style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}33` }}
-      >
+      <div className="flex items-center gap-4 p-4 rounded-2xl"
+        style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}33` }}>
+
         {/* Album art */}
-        <div
-          className="w-16 h-16 rounded-xl flex-shrink-0 flex items-center justify-center overflow-hidden"
-          style={{ backgroundColor: '#1a2a1a' }}
-        >
+        <div className="w-16 h-16 rounded-xl flex-shrink-0 flex items-center justify-center overflow-hidden"
+          style={{ backgroundColor: '#1a2a1a' }}>
           {currentTrack?.art ? (
             <img src={currentTrack.art} alt="Album art" className="w-full h-full object-cover" />
           ) : (
@@ -309,43 +367,39 @@ function SpotifyPlayer({ orgColor }) {
           )}
         </div>
 
-        {/* Track info */}
+        {/* Track info + status */}
         <div className="flex-1 min-w-0">
           <p className="font-bold text-white text-sm truncate">
-            {currentTrack?.name ?? (isReady ? 'No track playing' : 'Connecting…')}
+            {currentTrack?.name ?? (isReady ? 'No track playing' : 'Waiting for device…')}
           </p>
           <p className="text-xs truncate mt-0.5" style={{ color: '#9a8080' }}>
             {currentTrack?.artist ?? ''}
           </p>
-          {isReady && (
-            <div className="flex items-center gap-1 mt-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: SPOTIFY_GREEN }} />
-              <span className="text-xs font-semibold" style={{ color: SPOTIFY_GREEN }}>Connected</span>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 mt-1">
+            <div className="w-2 h-2 rounded-full flex-shrink-0 transition-colors"
+              style={{ backgroundColor: isReady ? SPOTIFY_GREEN : '#4a4a00' }} />
+            <span className="text-xs font-semibold transition-colors"
+              style={{ color: isReady ? SPOTIFY_GREEN : '#9a8040' }}>
+              {isReady ? 'Ready' : 'Connecting…'}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* ── Transport controls ── */}
       <div className="flex items-center justify-center gap-4">
-        <button
-          onClick={handlePrevious}
-          disabled={!isReady}
+        <button onClick={handlePrevious} disabled={!isReady}
           className="w-11 h-11 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
-          style={{ backgroundColor: '#1a2a1a', color: '#fff' }}
-        >
+          style={{ backgroundColor: '#1a2a1a', color: '#fff' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="19 20 9 12 19 4 19 20"/>
             <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </button>
 
-        <button
-          onClick={handlePlayPause}
-          disabled={!isReady}
+        <button onClick={handlePlayPause} disabled={!isReady && !deviceId}
           className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-30"
-          style={{ backgroundColor: SPOTIFY_GREEN, boxShadow: `0 0 24px ${SPOTIFY_GREEN}66` }}
-        >
+          style={{ backgroundColor: SPOTIFY_GREEN, boxShadow: `0 0 24px ${SPOTIFY_GREEN}66` }}>
           {isPlaying ? (
             <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
               <rect x="6" y="4" width="4" height="16" rx="1"/>
@@ -358,12 +412,9 @@ function SpotifyPlayer({ orgColor }) {
           )}
         </button>
 
-        <button
-          onClick={handleNext}
-          disabled={!isReady}
+        <button onClick={handleNext} disabled={!isReady}
           className="w-11 h-11 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
-          style={{ backgroundColor: '#1a2a1a', color: '#fff' }}
-        >
+          style={{ backgroundColor: '#1a2a1a', color: '#fff' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5 4 15 12 5 20 5 4"/>
             <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -376,11 +427,7 @@ function SpotifyPlayer({ orgColor }) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a8080" strokeWidth="2" strokeLinecap="round">
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
         </svg>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={volume}
+        <input type="range" min={0} max={100} value={volume}
           onChange={e => handleVolume(Number(e.target.value))}
           className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
           style={{
@@ -403,13 +450,10 @@ function SpotifyPlayer({ orgColor }) {
         {loadingLists ? (
           <p className="text-xs" style={{ color: '#4a2020' }}>Loading playlists…</p>
         ) : (
-          <select
-            value={selectedUri}
-            onChange={e => handlePlaylistSelect(e.target.value)}
-            disabled={!isReady}
+          <select value={selectedUri} onChange={e => handlePlaylistSelect(e.target.value)}
+            disabled={waiting}
             className="rounded-xl px-4 py-3 text-sm outline-none disabled:opacity-40"
-            style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}
-          >
+            style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}>
             <option value="">— Choose a playlist —</option>
             {playlists.map(p => (
               <option key={p.id} value={p.uri}>{p.name}</option>
@@ -425,11 +469,9 @@ function SpotifyPlayer({ orgColor }) {
       )}
 
       {/* ── Disconnect ── */}
-      <button
-        onClick={handleDisconnect}
+      <button onClick={handleDisconnect}
         className="self-start text-xs underline transition-opacity hover:opacity-60"
-        style={{ color: '#6a3030' }}
-      >
+        style={{ color: '#6a3030' }}>
         Disconnect Spotify
       </button>
     </div>
