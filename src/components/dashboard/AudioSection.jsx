@@ -1,15 +1,16 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   playAirHorn, playWhistle, playStadiumCrowd,
   playPeriodEnd, playDrumline, playCrowdClap,
   getAutoSounds, setAutoSound, resumeCtx,
 } from '../../lib/sounds'
+import { getAuthUrl, getStoredToken, getPlaylists } from '../../lib/spotify'
 import {
-  getAuthUrl, getStoredToken, clearTokens,
-  getPlaylists, getCurrentTrack,
-  play, pause, next, previous, setVolume, transferPlayback,
-  refreshToken, isTokenExpired,
-} from '../../lib/spotify'
+  subscribe as subscribeSpotify,
+  getSnapshot, initPlayer,
+  playTrack, pauseTrack, nextTrack, prevTrack, setVol,
+  disconnectPlayer, isConnected,
+} from '../../lib/spotifyPlayer'
 
 // ── Sound definitions ─────────────────────────────────────────────────────────
 const SOUNDS = [
@@ -111,129 +112,26 @@ function Toggle({ label, value, onChange, orgColor }) {
 }
 
 // ── Spotify Player ────────────────────────────────────────────────────────────
-const DEVICE_KEY = 'pp_spotify_device_id'
-
 function SpotifyPlayer({ orgColor }) {
-  // Restore device_id from localStorage so it survives tab switches
-  const [isReady,      setIsReady]      = useState(false)
-  const [deviceId,     setDeviceId]     = useState(() => localStorage.getItem(DEVICE_KEY))
-  const [isPlaying,    setIsPlaying]    = useState(false)
-  const [currentTrack, setCurrentTrack] = useState(null)
-  const [volume,       setVolumeState]  = useState(50)
+  // Mirror the singleton's state into local React state
+  const [snap,         setSnap]         = useState(() => getSnapshot())
   const [playlists,    setPlaylists]    = useState([])
   const [selectedUri,  setSelectedUri]  = useState('')
   const [loadingLists, setLoadingLists] = useState(true)
   const [error,        setError]        = useState('')
-  const [sdkError,     setSdkError]     = useState('')
-  const [waiting,      setWaiting]      = useState(false) // "please wait" retry state
 
-  const playerRef  = useRef(null)
-  const pollRef    = useRef(null)
-  const deviceRef  = useRef(deviceId)   // always-current ref for async callbacks
+  const { isReady, isPlaying, currentTrack, volume } = snap
 
-  useEffect(() => { deviceRef.current = deviceId }, [deviceId])
-
-  // ── Initialize Web Playback SDK ───────────────────────────────────────────
+  // ── Subscribe to singleton state (no disconnect on unmount) ─────────────
   useEffect(() => {
-    async function getToken() {
-      try {
-        if (isTokenExpired()) await refreshToken()
-        return getStoredToken()
-      } catch { return null }
-    }
-
-    function initPlayer() {
-      if (!window.Spotify) {
-        setSdkError('Spotify SDK not loaded — please refresh the page.')
-        return
-      }
-      // Avoid creating a second player if one already exists
-      if (playerRef.current) return
-
-      const player = new window.Spotify.Player({
-        name: 'PracticePace',
-        getOAuthToken: cb => getToken().then(t => { if (t) cb(t) }),
-        volume: 0.5,
-      })
-
-      player.addListener('ready', ({ device_id }) => {
-        // Persist so we survive tab switches without waiting again
-        localStorage.setItem(DEVICE_KEY, device_id)
-        deviceRef.current = device_id
-        setDeviceId(device_id)
-        setIsReady(true)
-        setWaiting(false)
-        // Silently claim this device — don't start playing
-        transferPlayback(device_id, false).catch(() => {})
-      })
-
-      player.addListener('not_ready', ({ device_id }) => {
-        setIsReady(false)
-        // Don't clear localStorage — we'll reconnect with the same device_id
-      })
-
-      player.addListener('player_state_changed', state => {
-        if (!state) return
-        setIsPlaying(!state.paused)
-        const track = state.track_window?.current_track
-        if (track) {
-          setCurrentTrack({
-            name:   track.name,
-            artist: track.artists?.map(a => a.name).join(', '),
-            album:  track.album?.name,
-            art:    track.album?.images?.[0]?.url ?? null,
-          })
-        }
-      })
-
-      player.addListener('initialization_error', ({ message }) => setSdkError(message))
-      player.addListener('authentication_error',  ({ message }) => setSdkError(message))
-      player.addListener('account_error',         ({ message }) =>
-        setSdkError('Spotify Premium is required for in-app playback. ' + message)
-      )
-
-      player.connect()
-      playerRef.current = player
-    }
-
-    // window.onSpotifyWebPlaybackSDKReady is the official entry point.
-    // If the SDK already loaded (e.g. on tab re-visit), call initPlayer directly.
-    if (window.Spotify) {
-      initPlayer()
-    } else {
-      window.onSpotifyWebPlaybackSDKReady = initPlayer
-    }
-
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.disconnect()
-        playerRef.current = null
-      }
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
+    // Make sure init fires if it was deferred (e.g. navigating back to Audio tab)
+    initPlayer()
+    const unsub = subscribeSpotify((type, payload) => {
+      if (type === 'state') setSnap({ ...payload })
+      if (type === 'error') setError(payload)
+    })
+    return unsub   // Just unsubscribe — never disconnect the player
   }, [])
-
-  // ── Poll currently playing (fallback for state_changed gaps) ─────────────
-  useEffect(() => {
-    if (!isReady) return
-    pollRef.current = setInterval(async () => {
-      try {
-        const data = await getCurrentTrack()
-        if (!data) return
-        setIsPlaying(data.is_playing)
-        const track = data.item
-        if (track) {
-          setCurrentTrack({
-            name:   track.name,
-            artist: track.artists?.map(a => a.name).join(', '),
-            album:  track.album?.name,
-            art:    track.album?.images?.[0]?.url ?? null,
-          })
-        }
-      } catch { /* ignore poll errors */ }
-    }, 5000)
-    return () => clearInterval(pollRef.current)
-  }, [isReady])
 
   // ── Load playlists ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -242,112 +140,43 @@ function SpotifyPlayer({ orgColor }) {
       .catch(e   => { setError(e.message); setLoadingLists(false) })
   }, [])
 
-  // ── Safe play helper: transfer → play ────────────────────────────────────
-  // Always transfers playback to PracticePace first so Spotify knows the device.
-  async function safePLayWithUri(contextUri) {
-    const id = deviceRef.current
-    if (!id) {
-      // Not ready yet — show message and retry once after 2s
-      setWaiting(true)
-      setError('')
-      setTimeout(async () => {
-        const retryId = deviceRef.current
-        if (retryId) {
-          try {
-            await transferPlayback(retryId, false)
-            await play({ contextUri, deviceId: retryId })
-            setIsPlaying(true)
-          } catch (e) { setError(e.message) }
-        } else {
-          setError('Device still not ready — please wait a moment and try again.')
-        }
-        setWaiting(false)
-      }, 2000)
-      return
-    }
-    try {
-      // Claim the device first, then start playback
-      await transferPlayback(id, false)
-      await play({ contextUri, deviceId: id })
-      setIsPlaying(true)
-      setError('')
-    } catch (e) { setError(e.message) }
-  }
-
   // ── Controls ──────────────────────────────────────────────────────────────
   async function handlePlayPause() {
-    const id = deviceRef.current
     try {
-      if (isPlaying) {
-        await pause(id)
-        setIsPlaying(false)
-      } else {
-        await transferPlayback(id, false)
-        await play({ contextUri: selectedUri || undefined, deviceId: id })
-        setIsPlaying(true)
-      }
+      if (isPlaying) { await pauseTrack() } else { await playTrack(selectedUri || undefined) }
       setError('')
     } catch (e) { setError(e.message) }
   }
 
-  async function handleNext()     { try { await next(deviceRef.current);     setError('') } catch (e) { setError(e.message) } }
-  async function handlePrevious() { try { await previous(deviceRef.current); setError('') } catch (e) { setError(e.message) } }
-
-  async function handleVolume(v) {
-    setVolumeState(v)
-    try { await setVolume(v, deviceRef.current) } catch { /* ignore */ }
-    if (playerRef.current) playerRef.current.setVolume(v / 100).catch(() => {})
-  }
+  async function handleNext()     { try { await nextTrack(); setError('') } catch (e) { setError(e.message) } }
+  async function handlePrevious() { try { await prevTrack(); setError('') } catch (e) { setError(e.message) } }
+  async function handleVolume(v)  { try { await setVol(v)  } catch { /* ignore */ } }
 
   async function handlePlaylistSelect(uri) {
     setSelectedUri(uri)
     if (!uri) return
-    await safePLayWithUri(uri)
+    try { await playTrack(uri); setError('') } catch (e) { setError(e.message) }
   }
 
   function handleDisconnect() {
-    if (playerRef.current) playerRef.current.disconnect()
-    localStorage.removeItem(DEVICE_KEY)
-    clearTokens()
+    disconnectPlayer()
     window.location.reload()
   }
 
   const SPOTIFY_GREEN = '#1db954'
 
-  if (sdkError) {
-    return (
-      <div className="flex flex-col gap-3 p-4 rounded-xl" style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000' }}>
-        <p className="text-xs font-semibold" style={{ color: '#ff6666' }}>{sdkError}</p>
-        <button onClick={handleDisconnect} className="text-xs underline self-start" style={{ color: '#9a8080' }}>
-          Disconnect and try again
-        </button>
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col gap-4">
 
       {/* ── Device status banner ── */}
-      {waiting ? (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
-          style={{ backgroundColor: '#1a1a00', border: '1px solid #3a3a00' }}>
-          <div className="w-4 h-4 rounded-full border-2 animate-spin flex-shrink-0"
-            style={{ borderColor: '#f59e0b', borderTopColor: 'transparent' }} />
-          <p className="text-xs font-semibold" style={{ color: '#f59e0b' }}>
-            Connecting to Spotify… please wait
-          </p>
-        </div>
-      ) : !isReady ? (
+      {!isReady && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
           style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000' }}>
           <div className="w-4 h-4 rounded-full border-2 animate-spin flex-shrink-0"
             style={{ borderColor: SPOTIFY_GREEN, borderTopColor: 'transparent' }} />
-          <p className="text-xs" style={{ color: '#9a8080' }}>
-            Starting PracticePace player…
-          </p>
+          <p className="text-xs" style={{ color: '#9a8080' }}>Starting PracticePace player…</p>
         </div>
-      ) : null}
+      )}
 
       {/* ── Now playing card ── */}
       <div className="flex items-center gap-4 p-4 rounded-2xl"
@@ -427,11 +256,11 @@ function SpotifyPlayer({ orgColor }) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a8080" strokeWidth="2" strokeLinecap="round">
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
         </svg>
-        <input type="range" min={0} max={100} value={volume}
+        <input type="range" min={0} max={100} value={snap.volume}
           onChange={e => handleVolume(Number(e.target.value))}
           className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
           style={{
-            background: `linear-gradient(to right, ${SPOTIFY_GREEN} ${volume}%, #2a0000 ${volume}%)`,
+            background: `linear-gradient(to right, ${SPOTIFY_GREEN} ${snap.volume}%, #2a0000 ${snap.volume}%)`,
             accentColor: SPOTIFY_GREEN,
           }}
         />
@@ -490,8 +319,8 @@ export default function AudioSection({ orgColor }) {
   const [unlocked, setUnlocked]           = useState(false)
   const [customSounds, setCustomSounds]   = useState([])
   const [playingCustom, setPlayingCustom] = useState(null)
-  const [spotifyConnected, setSpotifyConnected] = useState(() => !!getStoredToken())
-  const [connecting, setConnecting]       = useState(false)
+  const [spotifyConnected, setSpotifyConnected] = useState(() => isConnected())
+  const [connecting, setConnecting]             = useState(false)
 
   const customInputRef = useRef(null)
   const audioRefs      = useRef({})

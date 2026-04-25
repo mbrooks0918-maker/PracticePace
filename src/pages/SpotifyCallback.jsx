@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { exchangeCode } from '../lib/spotify'
+import { setupSpotifySDK } from '../lib/spotifyPlayer'
 
 export default function SpotifyCallback() {
   const navigate = useNavigate()
@@ -24,7 +25,11 @@ export default function SpotifyCallback() {
     }
 
     exchangeCode(code)
-      .then(() => navigate('/dashboard'))
+      .then(() => {
+        // Token is now stored — kick off SDK init before navigating
+        setupSpotifySDK()
+        navigate('/dashboard')
+      })
       .catch(e => {
         setError(e.message ?? 'Failed to connect Spotify.')
         setTimeout(() => navigate('/dashboard'), 3000)

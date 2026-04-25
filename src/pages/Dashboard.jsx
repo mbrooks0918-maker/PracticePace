@@ -4,6 +4,11 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import Logo from '../components/Logo'
 import AudioSection from '../components/dashboard/AudioSection'
+import {
+  subscribe as subscribeSpotify,
+  getSnapshot as getSpotifySnapshot,
+  pauseTrack, playTrack, isConnected as spotifyIsConnected,
+} from '../lib/spotifyPlayer'
 
 import PracticeSection   from '../components/dashboard/PracticeSection'
 import ScriptsSection    from '../components/dashboard/ScriptsSection'
@@ -57,6 +62,15 @@ export default function Dashboard() {
   const [scripts, setScripts]           = useState([])
   const [activeScript, setActiveScript] = useState(null)
   const [loading, setLoading]           = useState(true)
+
+  // ── Spotify mini player state ──────────────────────────────────────────────
+  const [spotifySnap, setSpotifySnap] = useState(() => getSpotifySnapshot())
+  useEffect(() => {
+    return subscribeSpotify((type, payload) => {
+      if (type === 'state') setSpotifySnap({ ...payload })
+    })
+  }, [])
+  const showMiniPlayer = spotifyIsConnected() && spotifySnap.currentTrack !== null
 
   const orgColor = org?.primary_color ?? '#cc1111'
 
@@ -236,7 +250,8 @@ export default function Dashboard() {
 
       {/* ── Body ── */}
       <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 flex flex-col overflow-hidden" style={{ paddingBottom: 68 }}>
+        <main className="flex-1 flex flex-col overflow-hidden"
+          style={{ paddingBottom: showMiniPlayer ? 120 : 68 }}>
 
           {section === 'practice' && (
             <PracticeSection
@@ -287,6 +302,65 @@ export default function Dashboard() {
 
         </main>
       </div>
+
+      {/* ── Spotify mini player (shown on all tabs when track is loaded) ── */}
+      {showMiniPlayer && (() => {
+        const { currentTrack, isPlaying } = spotifySnap
+        return (
+          <div
+            className="fixed left-0 right-0 flex items-center gap-3 px-4"
+            style={{
+              bottom: 68, height: 52, zIndex: 19,
+              backgroundColor: '#0a1a0a',
+              borderTop: '1px solid #1db95433',
+              borderBottom: '1px solid #0a1a0a',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            {/* Album art */}
+            <div className="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden"
+              style={{ backgroundColor: '#1a2a1a' }}>
+              {currentTrack?.art
+                ? <img src={currentTrack.art} alt="" className="w-full h-full object-cover" />
+                : <div className="w-full h-full" style={{ backgroundColor: '#1a2a1a' }} />
+              }
+            </div>
+
+            {/* Track info */}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-white truncate leading-tight">
+                {currentTrack?.name ?? ''}
+              </p>
+              <p className="text-xs truncate leading-tight" style={{ color: '#9a8080' }}>
+                {currentTrack?.artist ?? ''}
+              </p>
+            </div>
+
+            {/* Play / Pause */}
+            <button
+              onClick={async () => {
+                try {
+                  if (isPlaying) await pauseTrack()
+                  else           await playTrack()
+                } catch {}
+              }}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
+              style={{ backgroundColor: '#1db954', boxShadow: '0 0 12px #1db95466' }}
+            >
+              {isPlaying ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                  <rect x="6" y="4" width="4" height="16" rx="1"/>
+                  <rect x="14" y="4" width="4" height="16" rx="1"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="white" style={{ marginLeft: 2 }}>
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+              )}
+            </button>
+          </div>
+        )
+      })()}
 
       {/* ── Tab bar ── */}
       <nav
