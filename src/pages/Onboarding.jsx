@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Logo from '../components/Logo'
 import Tagline from '../components/Tagline'
@@ -123,22 +122,23 @@ function PlanCard({ id, title, price, period, badge, features, selected, onSelec
           color: selected ? '#fff' : '#9a8080',
         }}
       >
-        {selected ? 'Selected' : 'Select'}
+        {selected ? '✓ Selected' : 'Select'}
       </div>
     </button>
   )
 }
 
 // ── Step 1 ────────────────────────────────────────────────────────────────────
-function Step1({ accountType, setAccountType, onSkip, skipping }) {
+function Step1({ accountType, setAccountType, onNext, onSkip, skipping }) {
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-xl font-bold text-white">Choose your plan</h2>
         <p className="text-sm mt-1" style={{ color: '#9a8080' }}>
-          Start free for 30 days — no credit card required.
+          30-day free trial — no credit card required. Pick the plan that fits your program.
         </p>
       </div>
+
       <div className="flex flex-col sm:flex-row gap-4">
         <PlanCard
           id="single"
@@ -161,21 +161,31 @@ function Step1({ accountType, setAccountType, onSkip, skipping }) {
         />
       </div>
 
-      {/* Skip / demo shortcut */}
-      <div className="flex flex-col items-center gap-2 pt-2" style={{ borderTop: '1px solid #1a0000' }}>
+      {/* Primary CTA — always active */}
+      <button
+        type="button"
+        onClick={onNext}
+        className="w-full py-3.5 rounded-xl font-black text-white text-base tracking-wide transition-opacity"
+        style={{ backgroundColor: '#cc1111' }}
+      >
+        Start Free 30-Day Trial →
+      </button>
+
+      {/* Test Drive shortcut — pure guest / localStorage only */}
+      <div className="flex flex-col items-center gap-1.5 pt-1" style={{ borderTop: '1px solid #1a0000' }}>
         <button
           type="button"
           onClick={onSkip}
           disabled={skipping}
           className="text-sm font-semibold transition-colors disabled:opacity-50"
           style={{ color: '#4a2020' }}
-          onMouseEnter={e => !skipping && (e.target.style.color = '#9a8080')}
-          onMouseLeave={e => (e.target.style.color = '#4a2020')}
+          onMouseEnter={e => !skipping && (e.currentTarget.style.color = '#9a8080')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#4a2020')}
         >
-          {skipping ? 'Setting up demo…' : 'Skip for now — explore the app →'}
+          {skipping ? 'Loading demo…' : 'Just let me test drive the app →'}
         </button>
         <p className="text-xs text-center" style={{ color: '#2a1010' }}>
-          Creates a demo program so you can try every feature right away.
+          No account needed — explore every feature instantly using sample data.
         </p>
       </div>
     </div>
@@ -244,7 +254,7 @@ function Step2({ form, setForm }) {
           </select>
         </Field>
 
-        <Field label="School name">
+        <Field label="School / organization name">
           <input
             type="text"
             required
@@ -293,10 +303,10 @@ function Step2({ form, setForm }) {
 // ── Step 3 ────────────────────────────────────────────────────────────────────
 function Step3({ accountType, form }) {
   const planLabel = accountType === 'school' ? 'School — All Programs' : 'Single Program'
-  const planPrice = accountType === 'school' ? '$199/mo' : '$79/mo'
 
   const rows = [
-    { label: 'Plan', value: `${planLabel} — ${planPrice}` },
+    { label: 'Plan', value: planLabel },
+    { label: 'Trial', value: '30 days free — no credit card needed' },
     { label: 'Name', value: form.fullName },
     { label: 'Program', value: form.programName },
     { label: 'Sport', value: form.sport },
@@ -306,8 +316,10 @@ function Step3({ accountType, form }) {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-bold text-white">Looks good?</h2>
-        <p className="text-sm mt-1" style={{ color: '#9a8080' }}>Review your details before starting your trial.</p>
+        <h2 className="text-xl font-bold text-white">Ready to go!</h2>
+        <p className="text-sm mt-1" style={{ color: '#9a8080' }}>
+          Review your details — your trial starts the moment you hit the button below.
+        </p>
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #2a0000' }}>
@@ -329,14 +341,8 @@ function Step3({ accountType, form }) {
         >
           <span style={{ color: '#9a8080' }}>Colors</span>
           <div className="flex items-center gap-2">
-            <div
-              className="w-6 h-6 rounded-full border"
-              style={{ backgroundColor: form.primaryColor, borderColor: '#3a0000' }}
-            />
-            <div
-              className="w-6 h-6 rounded-full border"
-              style={{ backgroundColor: form.secondaryColor, borderColor: '#3a0000' }}
-            />
+            <div className="w-6 h-6 rounded-full border" style={{ backgroundColor: form.primaryColor, borderColor: '#3a0000' }} />
+            <div className="w-6 h-6 rounded-full border" style={{ backgroundColor: form.secondaryColor, borderColor: '#3a0000' }} />
           </div>
         </div>
       </div>
@@ -346,9 +352,9 @@ function Step3({ accountType, form }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Onboarding() {
-  const navigate = useNavigate()
   const [step, setStep] = useState(1)
-  const [accountType, setAccountType] = useState('')
+  // Default to 'single' so there's always a valid plan even if user skips selection
+  const [accountType, setAccountType] = useState('single')
   const [form, setForm] = useState({
     fullName: '',
     programName: '',
@@ -362,15 +368,12 @@ export default function Onboarding() {
   const [error, setError]       = useState('')
 
   function validateStep() {
-    if (step === 1 && !accountType) {
-      setError('Please select a plan.')
-      return false
-    }
+    // Step 1 always passes — accountType already has a default
     if (step === 2) {
-      if (!form.fullName.trim()) { setError('Full name is required.'); return false }
+      if (!form.fullName.trim())    { setError('Full name is required.');    return false }
       if (!form.programName.trim()) { setError('Program name is required.'); return false }
-      if (!form.sport) { setError('Please select a sport.'); return false }
-      if (!form.schoolName.trim()) { setError('School name is required.'); return false }
+      if (!form.sport)              { setError('Please select a sport.');    return false }
+      if (!form.schoolName.trim())  { setError('School name is required.');  return false }
     }
     return true
   }
@@ -386,61 +389,24 @@ export default function Onboarding() {
     setStep(s => s - 1)
   }
 
+  // ── Test Drive: anonymous guest session, no Supabase table writes ─────────
   async function handleSkip() {
     setError('')
     setSkipping(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not signed in.')
-
-      // 1. Account
-      const { data: account, error: accountErr } = await supabase
-        .from('accounts')
-        .insert({
-          name: 'Demo Program',
-          account_type: 'single',
-          plan_type: 'monthly',
-          status: 'demo',
-        })
-        .select()
-        .single()
-      if (accountErr) throw accountErr
-
-      // 2. Organization
-      const { data: org, error: orgErr } = await supabase
-        .from('organizations')
-        .insert({
-          account_id: account.id,
-          name: 'Demo Program',
-          slug: `demo-${account.id.slice(0, 8)}`,
-          sport: 'Football',
-          primary_color: '#cc1111',
-          secondary_color: '#ffffff',
-        })
-        .select()
-        .single()
-      if (orgErr) throw orgErr
-
-      // 3. Profile (upsert in case one was already created)
-      const { error: profileErr } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          account_id: account.id,
-          org_id: org.id,
-          email: user.email ?? '',
-          role: 'owner',
-          full_name: 'Demo Coach',
-        }, { onConflict: 'id' })
-      if (profileErr) throw profileErr
-
-      navigate('/dashboard')
+      // Sign out of the current (real) session first
+      await supabase.auth.signOut()
+      // Sign in anonymously — Dashboard detects is_anonymous and uses localStorage
+      const { error: anonErr } = await supabase.auth.signInAnonymously()
+      if (anonErr) throw anonErr
+      window.location.replace('/dashboard')
     } catch (err) {
       setError(err.message ?? 'Something went wrong.')
       setSkipping(false)
     }
   }
 
+  // ── Full onboarding submit: account + org + profile, status = trialing ────
   async function handleSubmit() {
     setError('')
     setLoading(true)
@@ -450,49 +416,51 @@ export default function Onboarding() {
       if (!user) throw new Error('Not authenticated.')
 
       const slug = slugify(form.programName)
+      const plan = accountType || 'single'
 
-      // 1. Insert account
+      // 1. Account
       const { data: account, error: accountErr } = await supabase
         .from('accounts')
         .insert({
-          name: form.programName,
-          account_type: accountType,
-          plan_type: 'monthly',
-          status: 'trialing',
+          name:         form.programName,
+          account_type: plan,
+          plan_type:    'monthly',
+          status:       'trialing',
         })
         .select()
         .single()
       if (accountErr) throw accountErr
 
-      // 2. Insert organization
+      // 2. Organization
       const { data: org, error: orgErr } = await supabase
         .from('organizations')
         .insert({
-          account_id: account.id,
-          name: form.programName,
+          account_id:      account.id,
+          name:            form.programName,
           slug,
-          sport: form.sport,
-          primary_color: form.primaryColor,
+          sport:           form.sport.toLowerCase(),   // DB requires lowercase
+          primary_color:   form.primaryColor,
           secondary_color: form.secondaryColor,
         })
         .select()
         .single()
       if (orgErr) throw orgErr
 
-      // 3. Insert profile
+      // 3. Profile — upsert so it never fails if a row was auto-created
       const { error: profileErr } = await supabase
         .from('profiles')
-        .insert({
-          id: user.id,
+        .upsert({
+          id:         user.id,
           account_id: account.id,
-          org_id: org.id,
-          email: user.email,
-          role: 'owner',
-          full_name: form.fullName,
-        })
+          org_id:     org.id,
+          email:      user.email ?? '',
+          role:       'owner',
+          full_name:  form.fullName,
+        }, { onConflict: 'id' })
       if (profileErr) throw profileErr
 
-      navigate('/dashboard')
+      // Hard redirect so React Router state can't interfere
+      window.location.replace('/dashboard')
     } catch (err) {
       setError(err.message ?? 'Something went wrong.')
       setLoading(false)
@@ -517,7 +485,15 @@ export default function Onboarding() {
       >
         <ProgressBar step={step} />
 
-        {step === 1 && <Step1 accountType={accountType} setAccountType={setAccountType} onSkip={handleSkip} skipping={skipping} />}
+        {step === 1 && (
+          <Step1
+            accountType={accountType}
+            setAccountType={setAccountType}
+            onNext={handleNext}
+            onSkip={handleSkip}
+            skipping={skipping}
+          />
+        )}
         {step === 2 && <Step2 form={form} setForm={setForm} />}
         {step === 3 && <Step3 accountType={accountType} form={form} />}
 
@@ -531,9 +507,9 @@ export default function Onboarding() {
           </p>
         )}
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-8 gap-4">
-          {step > 1 ? (
+        {/* Navigation — hidden on step 1 since Step1 has its own CTA buttons */}
+        {step > 1 && (
+          <div className="flex items-center justify-between mt-8 gap-4">
             <button
               type="button"
               onClick={handleBack}
@@ -543,34 +519,32 @@ export default function Onboarding() {
             >
               ← Back
             </button>
-          ) : (
-            <div />
-          )}
 
-          {step < 3 ? (
-            <button
-              type="button"
-              onClick={handleNext}
-              className="px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity"
-              style={{ backgroundColor: '#cc1111' }}
-            >
-              Next →
-            </button>
-          ) : (
-            <div className="flex flex-col items-end gap-1">
+            {step === 2 ? (
               <button
                 type="button"
-                onClick={handleSubmit}
-                disabled={loading}
-                className="px-6 py-2.5 rounded-lg text-sm font-bold text-white transition-opacity disabled:opacity-50"
+                onClick={handleNext}
+                className="px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity"
                 style={{ backgroundColor: '#cc1111' }}
               >
-                {loading ? 'Setting up…' : 'Start your free 30-day trial'}
+                Next →
               </button>
-              <span className="text-xs" style={{ color: '#4a2020' }}>No credit card required</span>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="px-6 py-3 rounded-xl text-sm font-black text-white transition-opacity disabled:opacity-50"
+                  style={{ backgroundColor: '#cc1111' }}
+                >
+                  {loading ? 'Setting up your account…' : '🚀 Launch My Trial'}
+                </button>
+                <span className="text-xs" style={{ color: '#4a2020' }}>No credit card required</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
