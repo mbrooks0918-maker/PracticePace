@@ -37,7 +37,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   // Form only tracks name + sport — color pickers removed (not needed by coaches)
   const [form, setForm] = useState({
     name:  org?.name  ?? '',
-    sport: org?.sport ?? '',
+    sport: (org?.sport ?? '').toLowerCase(),   // normalize so it always matches option values
   })
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
@@ -62,7 +62,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
     if (org?.id) {
       setForm({
         name:  org.name  ?? '',
-        sport: org.sport ?? '',
+        sport: (org.sport ?? '').toLowerCase(),   // normalize to match option values
       })
       loadCoaches()
     }
@@ -148,11 +148,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
         .eq('id', org.id)
 
       if (dbErr) {
-        setBgError(
-          dbErr.message?.includes('background_url')
-            ? 'Add a "background_url text" column to the organizations table in Supabase, then try again.'
-            : `Database error: ${dbErr.message}`
-        )
+        setBgError(`Upload failed: ${dbErr.message}`)
         return
       }
 
@@ -353,14 +349,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
               )}
             </div>
 
-            {/* Supabase setup reminder */}
-            <p className="text-xs leading-relaxed" style={{ color: '#4a2020' }}>
-              Requires: Supabase → Storage → New bucket → name{' '}
-              <code className="px-1 rounded" style={{ backgroundColor: '#1a0000', color: '#9a8080' }}>backgrounds</code>
-              {' '}→ Public. Also needs a{' '}
-              <code className="px-1 rounded" style={{ backgroundColor: '#1a0000', color: '#9a8080' }}>background_url text</code>
-              {' '}column on the organizations table.
-            </p>
+            {/* dev setup notes removed — see file header comment */}
           </Section>
         </div>
 
