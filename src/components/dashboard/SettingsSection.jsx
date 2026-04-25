@@ -79,16 +79,44 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   }
 
   async function saveSettings() {
-    if (!org?.id) { setSaveErr('Organization not loaded — please try again.'); return }
+    if (!form.name.trim()) { setSaveErr('Program name is required.'); return }
     setSaving(true); setSaved(false); setSaveErr('')
     try {
-      const { error: err } = await supabase
-        .from('organizations')
-        .update({ name: form.name, sport: form.sport })
-        .eq('id', org.id)
-      if (err) { setSaveErr(err.message); return }
-      setSaved(true)
-      onOrgUpdate?.({ ...org, ...form })
+      if (org?.id) {
+        // ── Existing org: update ──────────────────────────────────────────────
+        const { error: err } = await supabase
+          .from('organizations')
+          .update({ name: form.name.trim(), sport: form.sport })
+          .eq('id', org.id)
+        if (err) { setSaveErr(err.message); return }
+        setSaved(true)
+        onOrgUpdate?.({ ...org, name: form.name.trim(), sport: form.sport })
+      } else {
+        // ── No org yet: create org + profile (first-time setup) ──────────────
+        const { user } = await supabase.auth.getUser()
+        const userId = user?.user?.id
+        if (!userId) { setSaveErr('Not signed in — please reload.'); return }
+
+        // 1. Create the organization
+        const slug = form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now()
+        const { data: newOrg, error: orgErr } = await supabase
+          .from('organizations')
+          .insert({ name: form.name.trim(), sport: form.sport || 'football', slug, primary_color: '#cc1111', secondary_color: '#ffffff' })
+          .select()
+          .single()
+        if (orgErr) { setSaveErr(`Could not create org: ${orgErr.message}`); return }
+
+        // 2. Create or update the profile row
+        const { error: profErr } = await supabase
+          .from('profiles')
+          .upsert({ id: userId, org_id: newOrg.id, email: user.user.email ?? '', role: 'admin', full_name: profile?.full_name ?? '' }, { onConflict: 'id' })
+        if (profErr) { setSaveErr(`Could not create profile: ${profErr.message}`); return }
+
+        setSaved(true)
+        onOrgUpdate?.(newOrg)
+        // Reload page so Dashboard re-fetches everything with the new org
+        setTimeout(() => window.location.reload(), 1200)
+      }
       setTimeout(() => setSaved(false), 3000)
     } catch (e) {
       setSaveErr(e.message ?? 'Save failed.')
@@ -221,9 +249,8 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   const inputStyle = { backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }
 
   // ── Loading guard ────────────────────────────────────────────────────────────
-  // Spin ONLY while auth is actively resolving. Once authLoading flips to false,
-  // show the form regardless — if org is still null the fields are just empty and
-  // every mutating function has its own !org?.id guard so nothing will crash.
+  // Spin only while auth is actively loading. Once done, always show the form —
+  // if org is null the user will fill in their details and we'll create it on Save.
   if (!org && authLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -284,7 +311,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
               className="py-3 rounded-lg text-sm font-bold text-white disabled:opacity-50 transition-colors"
               style={{ backgroundColor: saved ? '#22c55e' : orgColor }}
             >
-              {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save Changes'}
+              {saving ? 'Saving…' : saved ? '✓ Saved!' : org?.id ? 'Save Changes' : 'Create Program'}
             </button>
           </Section>
 
