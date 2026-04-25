@@ -32,7 +32,7 @@ function Section({ title, children }) {
 }
 
 export default function SettingsSection({ org, profile, orgColor, onOrgUpdate }) {
-  const { loading: authLoading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
 
   // Form only tracks name + sport — color pickers removed (not needed by coaches)
   const [form, setForm] = useState({
@@ -93,8 +93,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
         onOrgUpdate?.({ ...org, name: form.name.trim(), sport: form.sport })
       } else {
         // ── No org yet: create org + profile (first-time setup) ──────────────
-        const { user } = await supabase.auth.getUser()
-        const userId = user?.user?.id
+        const userId = user?.id
         if (!userId) { setSaveErr('Not signed in — please reload.'); return }
 
         // 1. Create the organization
@@ -109,7 +108,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
         // 2. Create or update the profile row
         const { error: profErr } = await supabase
           .from('profiles')
-          .upsert({ id: userId, org_id: newOrg.id, email: user.user.email ?? '', role: 'admin', full_name: profile?.full_name ?? '' }, { onConflict: 'id' })
+          .upsert({ id: userId, org_id: newOrg.id, email: user?.email ?? '', role: 'admin', full_name: profile?.full_name ?? '' }, { onConflict: 'id' })
         if (profErr) { setSaveErr(`Could not create profile: ${profErr.message}`); return }
 
         setSaved(true)
