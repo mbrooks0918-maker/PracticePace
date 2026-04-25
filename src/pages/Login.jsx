@@ -19,41 +19,77 @@ export default function Login() {
     setInfo('')
     setLoading(true)
 
+    // 10 s hard timeout — if the auth flow hangs, unblock the button and show an error
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      setLoading(false)
+      setError('Request timed out. Check your connection and try again.')
+      console.error('[Login] Auth flow timed out after 10 s')
+    }, 10_000)
+
     try {
       if (mode === 'create') {
+        console.log('[Login] Attempting sign up for', email)
         const { error: signUpError } = await supabase.auth.signUp({ email, password })
         if (signUpError) throw signUpError
+        console.log('[Login] Sign up succeeded — awaiting email confirmation')
         setInfo('Check your email to confirm your account, then sign in.')
         setMode('signin')
-        setLoading(false)
         return
       }
 
+      console.log('[Login] Attempting sign in for', email)
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      console.log('[Login] signInWithPassword result:', { userId: data?.user?.id, error: signInError?.message })
       if (signInError) throw signInError
 
-      const { data: profile } = await supabase
+      if (timedOut) return  // timeout already reset loading — don't navigate
+
+      console.log('[Login] Checking profiles table for user', data.user.id)
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', data.user.id)
         .maybeSingle()
+      console.log('[Login] Profile check result:', { profile, error: profileError?.message })
+
+      if (timedOut) return
 
       navigate(profile ? '/dashboard' : '/onboarding')
     } catch (err) {
-      setError(err.message ?? 'Something went wrong.')
-      setLoading(false)
+      console.error('[Login] Auth error:', err)
+      if (!timedOut) setError(err.message ?? 'Something went wrong.')
+    } finally {
+      clearTimeout(timeout)
+      if (!timedOut) setLoading(false)
     }
   }
 
   async function handleGuest() {
     setError('')
     setLoading(true)
-    const { error: guestError } = await supabase.auth.signInAnonymously()
-    if (guestError) {
-      setError(guestError.message)
+
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
       setLoading(false)
-    } else {
-      navigate('/dashboard')
+      setError('Request timed out. Check your connection and try again.')
+      console.error('[Login] Guest sign in timed out after 10 s')
+    }, 10_000)
+
+    try {
+      console.log('[Login] Attempting anonymous sign in')
+      const { error: guestError } = await supabase.auth.signInAnonymously()
+      if (guestError) throw guestError
+      console.log('[Login] Anonymous sign in succeeded')
+      if (!timedOut) navigate('/dashboard')
+    } catch (err) {
+      console.error('[Login] Guest error:', err)
+      if (!timedOut) setError(err.message ?? 'Something went wrong.')
+    } finally {
+      clearTimeout(timeout)
+      if (!timedOut) setLoading(false)
     }
   }
 
