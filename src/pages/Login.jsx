@@ -17,6 +17,14 @@ export default function Login() {
     e.preventDefault()
     setError('')
     setInfo('')
+
+    // Fail fast if env vars are missing (common in fresh Vercel deployments)
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      setError('App is not configured — missing Supabase environment variables. Contact support.')
+      console.error('[Login] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not set.')
+      return
+    }
+
     setLoading(true)
 
     // 10 s hard timeout — if the auth flow hangs, unblock the button and show an error
