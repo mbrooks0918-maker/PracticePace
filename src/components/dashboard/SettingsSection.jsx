@@ -11,29 +11,39 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
     primary_color:   org?.primary_color   ?? '#cc1111',
     secondary_color: org?.secondary_color ?? '#ffffff',
   })
-  const [saving, setSaving]     = useState(false)
-  const [saved, setSaved]       = useState(false)
-  const [saveErr, setSaveErr]   = useState('')
-  const [coaches, setCoaches]   = useState([])
+  const [saving, setSaving]   = useState(false)
+  const [saved, setSaved]     = useState(false)
+  const [saveErr, setSaveErr] = useState('')
+
+  const [coaches, setCoaches]         = useState([])
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteName, setInviteName]   = useState('')
   const [inviteRole, setInviteRole]   = useState('coach')
   const [inviting, setInviting]       = useState(false)
   const [inviteMsg, setInviteMsg]     = useState('')
+  const [inviteErr, setInviteErr]     = useState('')
+  const [copied, setCopied]           = useState(false)
 
-  // Background image
   const [bgUploading, setBgUploading] = useState(false)
   const [bgError, setBgError]         = useState('')
   const [bgSuccess, setBgSuccess]     = useState(false)
   const bgInputRef = useRef(null)
 
+  // Sync form whenever org changes (including initial load)
   useEffect(() => {
-    if (org) {
-      setForm({ name: org.name ?? '', sport: org.sport ?? '', primary_color: org.primary_color ?? '#cc1111', secondary_color: org.secondary_color ?? '#ffffff' })
+    if (org?.id) {
+      setForm({
+        name:            org.name            ?? '',
+        sport:           org.sport           ?? '',
+        primary_color:   org.primary_color   ?? '#cc1111',
+        secondary_color: org.secondary_color ?? '#ffffff',
+      })
       loadCoaches()
     }
-  }, [org?.id])
+  }, [org?.id, org?.name, org?.sport, org?.primary_color, org?.secondary_color])
 
   async function loadCoaches() {
+    if (!org?.id) return
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name, email, role')
@@ -44,14 +54,20 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
   async function saveSettings() {
     setSaving(true); setSaved(false); setSaveErr('')
-    const { error: err } = await supabase
-      .from('organizations')
-      .update(form)
-      .eq('id', org.id)
-    if (err) { setSaveErr(err.message); setSaving(false); return }
-    setSaving(false); setSaved(true)
-    onOrgUpdate?.({ ...org, ...form })
-    setTimeout(() => setSaved(false), 3000)
+    try {
+      const { error: err } = await supabase
+        .from('organizations')
+        .update(form)
+        .eq('id', org.id)
+      if (err) { setSaveErr(err.message); return }
+      setSaved(true)
+      onOrgUpdate?.({ ...org, ...form })
+      setTimeout(() => setSaved(false), 3000)
+    } catch (e) {
+      setSaveErr(e.message ?? 'Save failed.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function uploadBackground(e) {
@@ -62,38 +78,53 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
     setBgUploading(true); setBgError(''); setBgSuccess(false)
 
-    const ext  = file.name.split('.').pop()
-    const path = `org-${org.id}/practice-bg.${ext}`
+    try {
+      const ext  = file.name.split('.').pop()
+      const path = `org-${org.id}/practice-bg.${ext}`
 
-    const { error: upErr } = await supabase.storage
-      .from('backgrounds')
-      .upload(path, file, { upsert: true, contentType: file.type })
+      const { error: upErr } = await supabase.storage
+        .from('backgrounds')
+        .upload(path, file, { upsert: true, contentType: file.type })
 
-    if (upErr) {
-      // Bucket might not exist yet — give a clear message
-      setBgError(upErr.message.includes('not found')
-        ? 'Storage bucket "backgrounds" not found. Create it in your Supabase dashboard → Storage.'
-        : upErr.message)
+      if (upErr) {
+        const msg = upErr.message ?? ''
+        setBgError(
+          msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('bucket')
+            ? 'Storage bucket "backgrounds" not found. In Supabase: Storage → New bucket → name it "backgrounds" → make it Public.'
+            : `Upload failed: ${msg}`
+        )
+        return
+      }
+
+      const { data: urlData } = supabase.storage.from('backgrounds').getPublicUrl(path)
+      const publicUrl = urlData?.publicUrl
+      if (!publicUrl) { setBgError('Could not get image URL. Check bucket settings.'); return }
+
+      const bgUrl = `${publicUrl}?v=${Date.now()}`
+      const { error: dbErr } = await supabase
+        .from('organizations')
+        .update({ background_url: bgUrl })
+        .eq('id', org.id)
+
+      if (dbErr) {
+        // Column might not exist yet — give actionable message
+        setBgError(
+          dbErr.message?.includes('background_url')
+            ? 'Add a "background_url text" column to your organizations table in Supabase, then try again.'
+            : `Database error: ${dbErr.message}`
+        )
+        return
+      }
+
+      setBgSuccess(true)
+      onOrgUpdate?.({ ...org, background_url: bgUrl })
+      setTimeout(() => setBgSuccess(false), 5000)
+      if (bgInputRef.current) bgInputRef.current.value = ''
+    } catch (err) {
+      setBgError(err.message ?? 'Upload failed. Please try again.')
+    } finally {
       setBgUploading(false)
-      return
     }
-
-    const { data: urlData } = supabase.storage.from('backgrounds').getPublicUrl(path)
-    const publicUrl = urlData?.publicUrl
-
-    // Save URL to org record — add ?v= cache-buster so browser picks up new image
-    const bgUrl = publicUrl + '?v=' + Date.now()
-    const { error: dbErr } = await supabase
-      .from('organizations')
-      .update({ background_url: bgUrl })
-      .eq('id', org.id)
-
-    if (dbErr) { setBgError(dbErr.message); setBgUploading(false); return }
-
-    setBgUploading(false); setBgSuccess(true)
-    onOrgUpdate?.({ ...org, background_url: bgUrl })
-    setTimeout(() => setBgSuccess(false), 4000)
-    if (bgInputRef.current) bgInputRef.current.value = ''
   }
 
   async function clearBackground() {
@@ -109,11 +140,43 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
     loadCoaches()
   }
 
-  function handleInvite(e) {
+  async function handleInvite(e) {
     e.preventDefault()
     if (!inviteEmail.trim()) return
-    setInviteMsg(`Share the sign-up link with ${inviteEmail}: ${window.location.origin}`)
-    setInviteEmail('')
+    setInviting(true); setInviteMsg(''); setInviteErr(''); setCopied(false)
+
+    try {
+      // Store invite record (if invites table exists) — graceful fallback if not
+      await supabase.from('coach_invites').insert({
+        org_id: org.id,
+        email:  inviteEmail.trim(),
+        name:   inviteName.trim() || null,
+        role:   inviteRole,
+      }).then(() => {}) // fire-and-forget, don't throw if table missing
+
+      const params = new URLSearchParams({
+        invite: 'true',
+        org:    org.id,
+        role:   inviteRole,
+        email:  inviteEmail.trim(),
+      })
+      const link = `${window.location.origin}/?${params.toString()}`
+      setInviteMsg(link)
+      setInviteEmail('')
+      setInviteName('')
+    } catch (err) {
+      setInviteErr(err.message ?? 'Could not generate invite.')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  function copyInviteLink() {
+    if (!inviteMsg) return
+    navigator.clipboard?.writeText(inviteMsg).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    })
   }
 
   function upd(key, val) { setForm(f => ({ ...f, [key]: val })) }
@@ -131,7 +194,6 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      {/* iPad landscape: 2-column grid */}
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
 
         {/* ── LEFT COLUMN ── */}
@@ -140,15 +202,27 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
           {/* Program Settings */}
           <Section title="Program Settings">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9a8080' }}>Program Name</label>
-              <input value={form.name} onChange={e => upd('name', e.target.value)}
-                className="rounded-lg px-4 py-3 text-sm outline-none" style={inputStyle} />
+              <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9a8080' }}>
+                Program Name
+              </label>
+              <input
+                value={form.name}
+                onChange={e => upd('name', e.target.value)}
+                placeholder="Albertville Aggies Football"
+                className="rounded-lg px-4 py-3 text-sm outline-none"
+                style={inputStyle}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9a8080' }}>Sport</label>
-              <select value={form.sport} onChange={e => upd('sport', e.target.value)}
-                className="rounded-lg px-4 py-3 text-sm outline-none" style={inputStyle}>
-                {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
+              <select
+                value={form.sport}
+                onChange={e => upd('sport', e.target.value)}
+                className="rounded-lg px-4 py-3 text-sm outline-none"
+                style={inputStyle}
+              >
+                <option value="">Select sport…</option>
+                {SPORTS.map(s => <option key={s} value={s.toLowerCase()}>{s}</option>)}
               </select>
             </div>
 
@@ -158,9 +232,13 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
                 <div key={key} className="flex flex-col gap-2">
                   <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9a8080' }}>{label} Color</label>
                   <div className="flex items-center gap-3">
-                    <input type="color" value={form[key]} onChange={e => upd(key, e.target.value)}
+                    <input
+                      type="color"
+                      value={form[key]}
+                      onChange={e => upd(key, e.target.value)}
                       className="w-12 h-10 rounded cursor-pointer"
-                      style={{ backgroundColor: 'transparent', border: '1px solid #2a0000', padding: 2 }} />
+                      style={{ backgroundColor: 'transparent', border: '1px solid #2a0000', padding: 2 }}
+                    />
                     <span className="text-sm font-mono" style={{ color: '#9a8080' }}>{form[key]}</span>
                   </div>
                 </div>
@@ -175,15 +253,19 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
                   PRACTICEPACE
                 </span>
               </div>
-              <div className="w-6 h-6 rounded-full border-2 border-white/20" style={{ backgroundColor: form.primary_color }} />
-              <div className="w-6 h-6 rounded-full border-2 border-white/20" style={{ backgroundColor: form.secondary_color }} />
             </div>
 
-            {saveErr && <p className="text-xs text-center rounded-lg px-3 py-2" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>{saveErr}</p>}
-
-            <button onClick={saveSettings} disabled={saving}
+            {saveErr && (
+              <p className="text-xs text-center rounded-lg px-3 py-2" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
+                {saveErr}
+              </p>
+            )}
+            <button
+              onClick={saveSettings}
+              disabled={saving}
               className="py-3 rounded-lg text-sm font-bold text-white disabled:opacity-50 transition-colors"
-              style={{ backgroundColor: saved ? '#22c55e' : orgColor }}>
+              style={{ backgroundColor: saved ? '#22c55e' : orgColor }}
+            >
               {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save Changes'}
             </button>
           </Section>
@@ -192,61 +274,51 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
           <Section title="Practice Screen Background">
             <p className="text-xs leading-relaxed" style={{ color: '#9a8080' }}>
               Upload an image that appears behind the clock on the Practice screen.
-              For the sharpest look on iPad, use a{' '}
+              Use a{' '}
               <span className="font-semibold text-white">landscape image at least 1366 × 1024 px</span>
-              {' '}(JPG or PNG, max 10 MB). A darker image works best — we add a semi-transparent overlay automatically.
+              {' '}(JPG or PNG, max 10 MB). A darker image works best — we add a semi-transparent overlay.
             </p>
 
-            {/* Current background preview */}
             {org?.background_url && (
               <div className="relative rounded-xl overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                <img src={org.background_url} alt="Practice background"
-                  className="w-full h-full object-cover" style={{ opacity: 0.7 }} />
+                <img
+                  src={org.background_url}
+                  alt="Practice background"
+                  className="w-full h-full object-cover"
+                  style={{ opacity: 0.7 }}
+                />
                 <div className="absolute inset-0 flex items-end p-3 justify-end">
-                  <button onClick={clearBackground}
+                  <button
+                    onClick={clearBackground}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid #cc1111', color: '#cc1111' }}>
+                    style={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid #cc1111', color: '#cc1111' }}
+                  >
                     ✕ Remove
                   </button>
-                </div>
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: 'rgba(0,0,0,0.6)', color: '#9a8080' }}>
-                    Current background
-                  </span>
                 </div>
               </div>
             )}
 
             <div className="flex flex-col gap-2">
-              <input
-                ref={bgInputRef}
-                type="file"
-                accept="image/*"
-                onChange={uploadBackground}
-                className="hidden"
-                id="bg-upload"
-              />
+              <input ref={bgInputRef} type="file" accept="image/*" onChange={uploadBackground} className="hidden" id="bg-upload" />
               <label
                 htmlFor="bg-upload"
                 className="flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold cursor-pointer transition-all"
                 style={{
-                  border: `2px dashed ${bgUploading ? orgColor : '#2a0000'}`,
-                  color: bgUploading ? orgColor : '#9a8080',
-                  backgroundColor: '#1a0000',
-                  opacity: bgUploading ? 0.7 : 1,
+                  border:           `2px dashed ${bgUploading ? orgColor : '#2a0000'}`,
+                  color:            bgUploading ? orgColor : '#9a8080',
+                  backgroundColor:  '#1a0000',
+                  pointerEvents:    bgUploading ? 'none' : 'auto',
                 }}
               >
-                {bgUploading ? (
-                  <>
-                    <span className="animate-spin">⟳</span> Uploading…
-                  </>
-                ) : (
-                  <>📸 {org?.background_url ? 'Replace Background Image' : 'Upload Background Image'}</>
-                )}
+                {bgUploading
+                  ? <><span className="animate-spin inline-block">⟳</span> Uploading…</>
+                  : <>📸 {org?.background_url ? 'Replace Background Image' : 'Upload Background Image'}</>
+                }
               </label>
 
               {bgError && (
-                <p className="text-xs rounded-lg px-3 py-2" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
+                <p className="text-xs rounded-lg px-3 py-2 leading-relaxed" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
                   {bgError}
                 </p>
               )}
@@ -258,7 +330,9 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
             </div>
 
             <p className="text-xs" style={{ color: '#4a2020' }}>
-              💡 To create the storage bucket: Supabase Dashboard → Storage → New bucket → name it <code className="px-1 rounded" style={{ backgroundColor: '#1a0000', color: '#9a8080' }}>backgrounds</code> → make it Public.
+              💡 Requires the Supabase Storage "backgrounds" bucket (public) and a{' '}
+              <code className="px-1 rounded" style={{ backgroundColor: '#1a0000', color: '#9a8080' }}>background_url text</code>
+              {' '}column on the organizations table.
             </p>
           </Section>
         </div>
@@ -269,12 +343,15 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
           {/* Coaches & Staff */}
           <Section title="Coaches & Staff">
             {coaches.length === 0 ? (
-              <p className="text-sm" style={{ color: '#9a8080' }}>No coaches found.</p>
+              <p className="text-sm" style={{ color: '#9a8080' }}>No coaches found for this org.</p>
             ) : (
-              <div className="flex flex-col" style={{ gap: 0 }}>
+              <div className="flex flex-col">
                 {coaches.map((c, i) => (
-                  <div key={c.id} className="flex items-center justify-between gap-3 py-3"
-                    style={{ borderTop: i === 0 ? 'none' : '1px solid #1a0000' }}>
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between gap-3 py-3"
+                    style={{ borderTop: i === 0 ? 'none' : '1px solid #1a0000' }}
+                  >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-white truncate">{c.full_name || '—'}</p>
                       <p className="text-xs truncate" style={{ color: '#9a8080' }}>{c.email}</p>
@@ -284,7 +361,8 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
                       onChange={e => updateRole(c.id, e.target.value)}
                       disabled={c.id === profile?.id}
                       className="rounded-lg px-2 py-2 text-xs font-bold outline-none disabled:opacity-40"
-                      style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: orgColor }}>
+                      style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: orgColor }}
+                    >
                       {ROLES.map(r => <option key={r} value={r} className="capitalize">{r}</option>)}
                     </select>
                   </div>
@@ -292,47 +370,91 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
               </div>
             )}
 
-            {/* Invite */}
+            {/* Invite form */}
             <form onSubmit={handleInvite} className="flex flex-col gap-3 pt-3" style={{ borderTop: '1px solid #2a0000' }}>
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#9a8080' }}>Invite Coach</p>
+
+              {/* Name field */}
+              <input
+                type="text"
+                value={inviteName}
+                onChange={e => setInviteName(e.target.value)}
+                placeholder="Coach full name (optional)"
+                className="rounded-lg px-3 py-3 text-sm outline-none"
+                style={inputStyle}
+              />
+
               <div className="flex gap-2">
-                <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
+                <input
+                  type="email"
+                  required
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
                   placeholder="coach@school.edu"
-                  className="flex-1 rounded-lg px-3 py-3 text-sm outline-none" style={inputStyle} />
-                <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
+                  className="flex-1 rounded-lg px-3 py-3 text-sm outline-none"
+                  style={inputStyle}
+                />
+                <select
+                  value={inviteRole}
+                  onChange={e => setInviteRole(e.target.value)}
                   className="rounded-lg px-2 py-3 text-xs font-bold outline-none"
-                  style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}>
+                  style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}
+                >
                   {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
-              <button type="submit" disabled={inviting}
+
+              <button
+                type="submit"
+                disabled={inviting}
                 className="py-3 rounded-lg text-sm font-bold text-white disabled:opacity-50"
-                style={{ backgroundColor: orgColor }}>
-                {inviting ? 'Sending…' : 'Generate Invite Link'}
+                style={{ backgroundColor: orgColor }}
+              >
+                {inviting ? 'Generating…' : 'Generate Invite Link'}
               </button>
-              {inviteMsg && (
-                <p className="text-xs p-3 rounded-lg" style={{ backgroundColor: '#001a00', color: '#66cc88' }}>
-                  {inviteMsg}
+
+              {inviteErr && (
+                <p className="text-xs p-3 rounded-lg" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
+                  {inviteErr}
                 </p>
+              )}
+
+              {inviteMsg && (
+                <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ backgroundColor: '#001a00', border: '1px solid #003300' }}>
+                  <p className="text-xs font-semibold" style={{ color: '#66cc88' }}>
+                    ✓ Invite link ready — share this with {inviteEmail || 'the coach'}:
+                  </p>
+                  <p className="text-xs break-all font-mono" style={{ color: '#9a9a9a' }}>{inviteMsg}</p>
+                  <button
+                    type="button"
+                    onClick={copyInviteLink}
+                    className="self-start px-4 py-2 rounded-lg text-xs font-bold transition-all"
+                    style={{
+                      backgroundColor: copied ? '#22c55e22' : `${orgColor}22`,
+                      border:          `1px solid ${copied ? '#22c55e' : orgColor}`,
+                      color:           copied ? '#22c55e' : orgColor,
+                    }}
+                  >
+                    {copied ? '✓ Copied!' : 'Copy Link'}
+                  </button>
+                </div>
               )}
             </form>
           </Section>
 
           {/* Account info */}
           <Section title="Your Account">
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Name</span>
-                <span className="text-sm font-semibold text-white">{profile?.full_name || '—'}</span>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Email</span>
-                <span className="text-sm font-semibold text-white">{profile?.email || '—'}</span>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Role</span>
-                <span className="text-sm font-semibold text-white capitalize">{profile?.role || '—'}</span>
-              </div>
+            <div className="flex flex-col gap-3">
+              {[
+                { label: 'Name',  value: profile?.full_name },
+                { label: 'Email', value: profile?.email },
+                { label: 'Role',  value: profile?.role },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex flex-col gap-0.5">
+                  <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>{label}</span>
+                  <span className="text-sm font-semibold text-white capitalize">{value || '—'}</span>
+                </div>
+              ))}
             </div>
           </Section>
         </div>

@@ -14,7 +14,42 @@ function clockColor(left, total) {
 
 function blowHorn() { playAirHorn() }
 
-const PRESETS = [5, 10, 15, 20]
+// ── Practice prefs (localStorage) ─────────────────────────────────────────────
+function getPracticePrefs() {
+  try { return JSON.parse(localStorage.getItem('pp_practice_prefs') ?? '{}') } catch { return {} }
+}
+function savePracticePref(key, val) {
+  const cur = getPracticePrefs()
+  localStorage.setItem('pp_practice_prefs', JSON.stringify({ ...cur, [key]: val }))
+}
+
+const TIME_PRESETS = [5, 10, 15, 20]
+
+// ── Toggle button ──────────────────────────────────────────────────────────────
+function ToggleBtn({ label, active, onColor = '#22c55e', onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+      style={{
+        backgroundColor: active ? `${onColor}22` : '#110000',
+        border:          `1px solid ${active ? onColor : '#2a0000'}`,
+        color:           active ? onColor : '#4a2020',
+      }}
+    >
+      <span
+        className="w-7 h-4 rounded-full relative flex-shrink-0"
+        style={{ backgroundColor: active ? onColor : '#2a0000' }}
+      >
+        <span
+          className="absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all"
+          style={{ left: active ? '14px' : '2px' }}
+        />
+      </span>
+      {label}
+    </button>
+  )
+}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function PracticeSection({ activeScript, orgColor, backgroundUrl }) {
@@ -28,14 +63,22 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
   const [inOverrun,      setInOverrun]       = useState(false)
   const [manualDuration, setManualDuration]  = useState(300)
 
-  const idxRef       = useRef(0)
-  const scriptRef    = useRef(activeScript)
-  const totalRef     = useRef(0)
-  const inOverrunRef = useRef(false)
-  const hornFiredRef = useRef(false)
+  // ── Coach preference toggles ───────────────────────────────────────────────
+  const [autoAdvance,  setAutoAdvance]  = useState(() => getPracticePrefs().autoAdvance  ?? true)
+  const [allowOverrun, setAllowOverrun] = useState(() => getPracticePrefs().allowOverrun ?? false)
 
-  useEffect(() => { scriptRef.current = activeScript }, [activeScript])
-  useEffect(() => { inOverrunRef.current = inOverrun },  [inOverrun])
+  const idxRef          = useRef(0)
+  const scriptRef       = useRef(activeScript)
+  const totalRef        = useRef(0)
+  const inOverrunRef    = useRef(false)
+  const hornFiredRef    = useRef(false)
+  const autoAdvanceRef  = useRef(autoAdvance)
+  const allowOverrunRef = useRef(allowOverrun)
+
+  useEffect(() => { scriptRef.current    = activeScript },  [activeScript])
+  useEffect(() => { inOverrunRef.current = inOverrun },     [inOverrun])
+  useEffect(() => { autoAdvanceRef.current  = autoAdvance },  [autoAdvance])
+  useEffect(() => { allowOverrunRef.current = allowOverrun }, [allowOverrun])
   useEffect(() => { resetAll() }, [activeScript])
 
   function resetAll() {
@@ -47,15 +90,13 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
     setSecondsLeft(dur); totalRef.current = dur
   }
 
-  // Tick — auto-advance always on
+  // ── Tick ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isRunning) return
     const id = setInterval(() => {
       if (inOverrunRef.current) { setOverrunSecs(s => s + 1); return }
       setSecondsLeft(prev => {
-        const next = prev - 1
-
-        // ── Auto-sound: whistle at 60 seconds remaining ──────────────────────
+        // Whistle at 60s remaining
         if (prev === 61) {
           const sounds = getAutoSounds()
           if (sounds.whistleAt60) playWhistle()
@@ -65,24 +106,35 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
           if (!hornFiredRef.current) {
             hornFiredRef.current = true
             const sounds = getAutoSounds()
-            if (sounds.hornOnEnd !== false) blowHorn()   // horn on by default
+            if (sounds.hornOnEnd !== false) blowHorn()
           }
-          const d    = scriptRef.current?.drills ?? []
-          const nxt  = idxRef.current + 1
-          if (nxt < d.length) {
-            hornFiredRef.current = false
-            idxRef.current = nxt; setDrillIdx(nxt)
-            const dur = d[nxt].duration ?? 0; totalRef.current = dur; return dur
+
+          // Auto-advance to next drill?
+          if (autoAdvanceRef.current) {
+            const d   = scriptRef.current?.drills ?? []
+            const nxt = idxRef.current + 1
+            if (nxt < d.length) {
+              hornFiredRef.current = false
+              idxRef.current = nxt; setDrillIdx(nxt)
+              const dur = d[nxt].duration ?? 0; totalRef.current = dur; return dur
+            }
           }
+
+          // Overrun allowed?
+          if (allowOverrunRef.current) {
+            setInOverrun(true); inOverrunRef.current = true
+            return 0
+          }
+
           setIsRunning(false); return 0
         }
-        return next
+        return prev - 1
       })
     }, 1000)
     return () => clearInterval(id)
   }, [isRunning])
 
-  // Fire overrun alert sound once when overrun begins
+  // Fire overrun alert once when overrun begins
   const overrunStartedRef = useRef(false)
   useEffect(() => {
     if (inOverrun && !overrunStartedRef.current) {
@@ -93,6 +145,7 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
     if (!inOverrun) overrunStartedRef.current = false
   }, [inOverrun])
 
+  // ── Navigation helpers ────────────────────────────────────────────────────
   function jumpTo(i) {
     setInOverrun(false); inOverrunRef.current = false
     setOverrunSecs(0); setIsRunning(false); hornFiredRef.current = false
@@ -109,15 +162,38 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
     if (next < drills.length) { jumpTo(next) } else { setIsRunning(false) }
   }
 
-  function applyPreset(mins) {
-    const dur = mins * 60; setManualDuration(dur)
+  // ── Time adjustment ───────────────────────────────────────────────────────
+  function setTimeTo(secs) {
+    setIsRunning(false)
+    setSecondsLeft(secs)
+    totalRef.current = secs
     setInOverrun(false); inOverrunRef.current = false
-    setIsRunning(false); setHasStarted(false)
-    setSecondsLeft(dur); totalRef.current = dur; hornFiredRef.current = false
+    setOverrunSecs(0); hornFiredRef.current = false
+    // Update manualDuration so Quick Timer remembers it
+    if (!activeScript) setManualDuration(secs)
+  }
+
+  function addMinute() {
+    setSecondsLeft(prev => {
+      const newVal = prev + 60
+      if (newVal > totalRef.current) totalRef.current = newVal
+      return newVal
+    })
+    if (inOverrunRef.current) {
+      setInOverrun(false); inOverrunRef.current = false; setOverrunSecs(0)
+    }
+  }
+
+  // ── Toggles ───────────────────────────────────────────────────────────────
+  function toggleAutoAdvance() {
+    const val = !autoAdvance; setAutoAdvance(val); savePracticePref('autoAdvance', val)
+  }
+  function toggleAllowOverrun() {
+    const val = !allowOverrun; setAllowOverrun(val); savePracticePref('allowOverrun', val)
   }
 
   function handleStart() {
-    loadHorn()   // pre-load the horn buffer and warm up AudioContext
+    loadHorn()
     setIsRunning(r => !r); setHasStarted(true)
   }
 
@@ -139,15 +215,14 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
         backgroundPosition: 'center',
       }}
     >
-      {/* Background overlay */}
       {backgroundUrl && (
         <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: 'rgba(0,0,0,0.72)' }} />
       )}
 
-      <div className="relative z-10 flex-1 flex flex-col overflow-hidden px-4 pb-3 gap-0">
+      <div className="relative z-10 flex-1 flex flex-col overflow-hidden px-4 pb-2 gap-0">
 
-        {/* ── 1. Script name + period dots ───────────────────────────────── */}
-        <div className="shrink-0 flex flex-col items-center gap-1.5 pt-2 pb-2">
+        {/* ── 1. Script name + period dots ────────────────────────────────── */}
+        <div className="shrink-0 flex flex-col items-center gap-1.5 pt-2 pb-1">
           {activeScript ? (
             <>
               <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#6a4040' }}>
@@ -186,8 +261,8 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
           )}
         </div>
 
-        {/* ── 2. Current segment name — ABOVE timer ──────────────────────── */}
-        <div className="shrink-0 flex items-end justify-center pb-2" style={{ minHeight: 56 }}>
+        {/* ── 2. Current segment name ─────────────────────────────────────── */}
+        <div className="shrink-0 flex items-end justify-center pb-1" style={{ minHeight: 52 }}>
           {currentDrill ? (
             <h1
               className="text-center leading-none tracking-wide"
@@ -216,7 +291,7 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
           )}
         </div>
 
-        {/* ── 3. Timer — the hero ─────────────────────────────────────────── */}
+        {/* ── 3. Timer ────────────────────────────────────────────────────── */}
         <div
           className="flex-1 min-h-0 flex items-center justify-center rounded-3xl"
           style={{
@@ -254,10 +329,10 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
         </div>
 
         {/* ── 4. Divider ──────────────────────────────────────────────────── */}
-        <div className="shrink-0 mt-3 mb-2.5 w-full" style={{ height: 1, backgroundColor: '#1a0000' }} />
+        <div className="shrink-0 mt-2 mb-2 w-full" style={{ height: 1, backgroundColor: '#1a0000' }} />
 
-        {/* ── 5 & 6 & 7. Next up ──────────────────────────────────────────── */}
-        <div className="shrink-0 flex flex-col items-center gap-0.5" style={{ minHeight: 52 }}>
+        {/* ── 5. Next up ──────────────────────────────────────────────────── */}
+        <div className="shrink-0 flex flex-col items-center gap-0.5" style={{ minHeight: 56 }}>
           {nextDrill ? (
             <>
               <p
@@ -270,8 +345,8 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
                 className="text-center leading-tight"
                 style={{
                   fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: 'clamp(1.6rem, 3.8vw, 2.8rem)',
-                  color: 'rgba(255,255,255,0.45)',
+                  fontSize: 'clamp(2.2rem, 5vw, 4rem)',
+                  color: 'rgba(255,255,255,0.85)',
                   letterSpacing: '0.04em',
                 }}
               >
@@ -279,7 +354,7 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
               </p>
               <p
                 className="font-mono font-bold"
-                style={{ fontSize: 'clamp(0.75rem, 1.4vw, 1rem)', color: '#3a1818' }}
+                style={{ fontSize: 'clamp(0.9rem, 1.6vw, 1.1rem)', color: '#9a8080' }}
               >
                 {fmt(nextDrill.duration ?? 0)}
               </p>
@@ -297,7 +372,6 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
             </p>
           ) : null}
 
-          {/* Overrun warning */}
           {inOverrun && (
             <p className="text-sm font-black animate-pulse mt-1" style={{ color: '#ef4444' }}>
               ⚠ OVERRUN — {fmt(overrunSecs)} past end
@@ -305,45 +379,52 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
           )}
         </div>
 
-        {/* ── Preset row (Quick Timer only) ───────────────────────────────── */}
-        {!activeScript && (
-          <div className="shrink-0 flex items-center justify-center gap-2 mt-1">
-            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#3a1818' }}>Preset</span>
-            {PRESETS.map(m => (
+        {/* ── 6. Time hot buttons ─────────────────────────────────────────── */}
+        <div className="shrink-0 flex items-center justify-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#3a1818' }}>Set</span>
+          {TIME_PRESETS.map(m => {
+            const secs    = m * 60
+            const isActive = secondsLeft === secs && !isRunning
+            return (
               <button
                 key={m}
-                onClick={() => applyPreset(m)}
-                className="px-4 py-2 rounded-lg text-sm font-bold"
+                onClick={() => setTimeTo(secs)}
+                className="px-3 py-1.5 rounded-lg text-sm font-bold"
                 style={{
-                  backgroundColor: secondsLeft === m * 60 ? `${orgColor}22` : '#110000',
-                  border:          `1px solid ${secondsLeft === m * 60 ? orgColor : '#2a0000'}`,
-                  color:           secondsLeft === m * 60 ? orgColor : '#9a8080',
+                  backgroundColor: isActive ? `${orgColor}22` : '#110000',
+                  border:          `1px solid ${isActive ? orgColor : '#2a0000'}`,
+                  color:           isActive ? orgColor : '#9a8080',
                 }}
               >
                 {m}m
               </button>
-            ))}
-          </div>
-        )}
+            )
+          })}
+          <button
+            onClick={addMinute}
+            className="px-3 py-1.5 rounded-lg text-sm font-bold"
+            style={{ backgroundColor: '#110000', border: '1px solid #2a0000', color: '#9a8080' }}
+          >
+            +1m
+          </button>
+        </div>
 
-        {/* ── Controls ────────────────────────────────────────────────────── */}
-        <div className="shrink-0 flex items-center justify-center gap-3 pt-2 pb-1">
-          {/* Prev */}
+        {/* ── 7. Controls ─────────────────────────────────────────────────── */}
+        <div className="shrink-0 flex items-center justify-center gap-3 pt-1 pb-0.5">
           <button
             onClick={goPrev}
             disabled={drillIdx === 0}
             title="Previous segment"
             className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl disabled:opacity-20 transition-opacity"
             style={{
-              border:           '1px solid #2a0000',
-              color:            '#9a8080',
-              backgroundColor:  backgroundUrl ? 'rgba(17,0,0,0.85)' : '#110000',
+              border:          '1px solid #2a0000',
+              color:           '#9a8080',
+              backgroundColor: backgroundUrl ? 'rgba(17,0,0,0.85)' : '#110000',
             }}
           >
             ⏮
           </button>
 
-          {/* Reset */}
           <button
             onClick={resetAll}
             title="Reset"
@@ -357,7 +438,6 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
             ↺
           </button>
 
-          {/* Start / Pause */}
           <button
             onClick={handleStart}
             className="h-14 px-10 rounded-xl font-black text-white transition-all"
@@ -366,7 +446,6 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
             {isRunning ? '⏸ Pause' : isDone ? '✓ Done' : '▶ Start'}
           </button>
 
-          {/* Horn + Next */}
           <button
             onClick={hornAndAdvance}
             disabled={isLastDrill && !isRunning && secondsLeft === 0}
@@ -378,8 +457,24 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
               fontSize:        '1.1rem',
             }}
           >
-            📯 Next
+            Next →
           </button>
+        </div>
+
+        {/* ── 8. Coach toggles ─────────────────────────────────────────────── */}
+        <div className="shrink-0 flex items-center justify-center gap-3 pb-1">
+          <ToggleBtn
+            label="Auto-Advance"
+            active={autoAdvance}
+            onColor={orgColor}
+            onClick={toggleAutoAdvance}
+          />
+          <ToggleBtn
+            label="Allow Overrun"
+            active={allowOverrun}
+            onColor="#ef4444"
+            onClick={toggleAllowOverrun}
+          />
         </div>
 
       </div>

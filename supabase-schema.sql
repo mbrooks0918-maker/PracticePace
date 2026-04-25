@@ -220,3 +220,70 @@ create policy "org admins can manage backgrounds"
 create unique index backgrounds_one_default_per_org_idx
   on backgrounds(org_id)
   where is_default = true;
+
+
+-- ============================================================
+-- ADDITIONS — run these ALTER / CREATE statements on an
+-- existing database to bring it up to date.
+-- ============================================================
+
+-- 1. Add background_url to organizations
+alter table organizations
+  add column if not exists background_url text;
+
+-- 2. Widen the scripts sport check to all supported sports
+alter table scripts
+  drop constraint if exists scripts_sport_check;
+alter table scripts
+  add constraint scripts_sport_check
+  check (sport in (
+    'football','basketball','volleyball','baseball',
+    'softball','soccer','track','wrestling','tennis','other'
+  ));
+
+-- 3. Videos table
+create table if not exists videos (
+  id          uuid primary key default uuid_generate_v4(),
+  org_id      uuid not null references organizations(id) on delete cascade,
+  title       text not null,
+  url         text not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists videos_org_id_idx on videos(org_id);
+
+alter table videos enable row level security;
+
+create policy "org members can view videos"
+  on videos for select
+  using (org_id = get_my_org_id());
+
+create policy "coaches and admins can insert videos"
+  on videos for insert
+  with check (
+    org_id = get_my_org_id()
+    and (select role from profiles where id = auth.uid()) in ('admin', 'coach')
+  );
+
+create policy "coaches and admins can delete videos"
+  on videos for delete
+  using (
+    org_id = get_my_org_id()
+    and (select role from profiles where id = auth.uid()) in ('admin', 'coach')
+  );
+
+-- 4. Coach invites table (for the invite-coach flow)
+create table if not exists coach_invites (
+  id         uuid primary key default uuid_generate_v4(),
+  org_id     uuid not null references organizations(id) on delete cascade,
+  email      text not null,
+  name       text,
+  role       text not null default 'coach' check (role in ('admin','coach','readonly')),
+  created_at timestamptz not null default now()
+);
+
+alter table coach_invites enable row level security;
+
+create policy "org admins can manage invites"
+  on coach_invites for all
+  using  (org_id = get_my_org_id() and (select role from profiles where id = auth.uid()) = 'admin')
+  with check (org_id = get_my_org_id() and (select role from profiles where id = auth.uid()) = 'admin');
