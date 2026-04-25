@@ -341,39 +341,24 @@ export default function AudioSection({ orgColor }) {
             </div>
 
             <div className="flex flex-col gap-3">
-              {[
-                { name: 'Spotify',     color: '#1db954', logo: (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#1db954">
-                    <circle cx="12" cy="12" r="12"/>
-                    <path d="M17.9 10.9C14.7 9 9.35 8.8 6.3 9.75c-.5.15-1-.15-1.15-.6-.15-.5.15-1 .6-1.15C9.65 6.8 15.6 7 19.35 9.2c.45.25.6.85.35 1.3-.25.35-.85.5-1.3.25m-.1 2.8c-.25.4-.75.5-1.15.25-2.7-1.65-6.8-2.15-9.95-1.15-.4.1-.85-.1-.95-.5-.1-.4.1-.85.5-.95 3.65-1.1 8.15-.55 11.25 1.35.4.25.5.75.3 1m-1.3 2.8c-.2.35-.65.45-1 .25-2.35-1.45-5.3-1.75-8.8-.95-.35.1-.65-.15-.75-.45-.1-.35.15-.65.45-.75 3.8-.85 7.1-.5 9.7 1.1.35.15.4.65.4 1" fill="white"/>
-                  </svg>
-                )},
-                { name: 'Apple Music', color: '#fc3c44', logo: (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                    <rect width="24" height="24" rx="5" fill="#fc3c44"/>
-                    <path d="M17 8.5v5.5a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h4l4-2v2.5z" fill="white" opacity=".9"/>
-                    <circle cx="10" cy="14" r="1.5" fill="white"/>
-                    <circle cx="15" cy="12.5" r="1.5" fill="white"/>
-                  </svg>
-                )},
-              ].map(svc => (
-                <button
-                  key={svc.name}
-                  disabled
-                  className="flex items-center gap-4 px-5 py-4 rounded-xl transition-all"
-                  style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', opacity: 0.55, cursor: 'not-allowed' }}
-                >
-                  {svc.logo}
-                  <div className="text-left flex-1">
-                    <p className="text-sm font-bold text-white">{svc.name}</p>
-                    <p className="text-xs" style={{ color: '#9a8080' }}>Connect your account</p>
-                  </div>
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                    style={{ backgroundColor: '#2a1800', color: '#cc8800', border: '1px solid #3a2000' }}>
-                    Soon
-                  </span>
-                </button>
-              ))}
+              <button
+                disabled
+                className="flex items-center gap-4 px-5 py-4 rounded-xl transition-all"
+                style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', opacity: 0.55, cursor: 'not-allowed' }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#1db954">
+                  <circle cx="12" cy="12" r="12"/>
+                  <path d="M17.9 10.9C14.7 9 9.35 8.8 6.3 9.75c-.5.15-1-.15-1.15-.6-.15-.5.15-1 .6-1.15C9.65 6.8 15.6 7 19.35 9.2c.45.25.6.85.35 1.3-.25.35-.85.5-1.3.25m-.1 2.8c-.25.4-.75.5-1.15.25-2.7-1.65-6.8-2.15-9.95-1.15-.4.1-.85-.1-.95-.5-.1-.4.1-.85.5-.95 3.65-1.1 8.15-.55 11.25 1.35.4.25.5.75.3 1m-1.3 2.8c-.2.35-.65.45-1 .25-2.35-1.45-5.3-1.75-8.8-.95-.35.1-.65-.15-.75-.45-.1-.35.15-.65.45-.75 3.8-.85 7.1-.5 9.7 1.1.35.15.4.65.4 1" fill="white"/>
+                </svg>
+                <div className="text-left flex-1">
+                  <p className="text-sm font-bold text-white">Spotify</p>
+                  <p className="text-xs" style={{ color: '#9a8080' }}>Connect your Spotify account to control music playback during practice. Requires Spotify Premium.</p>
+                </div>
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: '#2a1800', color: '#cc8800', border: '1px solid #3a2000' }}>
+                  Soon
+                </span>
+              </button>
             </div>
 
             <p className="text-xs px-1" style={{ color: '#4a2020' }}>
