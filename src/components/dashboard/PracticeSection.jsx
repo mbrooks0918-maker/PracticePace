@@ -337,7 +337,7 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
             <>
               <p
                 className="tracking-widest uppercase font-bold"
-                style={{ fontSize: '0.6rem', color: '#3a1818', letterSpacing: '0.18em' }}
+                style={{ fontSize: '0.75rem', color: '#ffffff', letterSpacing: '0.25em' }}
               >
                 Next Up
               </p>
@@ -345,7 +345,7 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
                 className="text-center leading-tight"
                 style={{
                   fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: 'clamp(2.2rem, 5vw, 4rem)',
+                  fontSize: 'clamp(1.8rem, 4vw, 3.2rem)',
                   color: 'rgba(255,255,255,0.85)',
                   letterSpacing: '0.04em',
                 }}
