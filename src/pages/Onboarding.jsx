@@ -130,7 +130,7 @@ function PlanCard({ id, title, price, period, badge, features, selected, onSelec
 }
 
 // ── Step 1 ────────────────────────────────────────────────────────────────────
-function Step1({ accountType, setAccountType }) {
+function Step1({ accountType, setAccountType, onSkip, skipping }) {
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -159,6 +159,24 @@ function Step1({ accountType, setAccountType }) {
           selected={accountType === 'school'}
           onSelect={setAccountType}
         />
+      </div>
+
+      {/* Skip / demo shortcut */}
+      <div className="flex flex-col items-center gap-2 pt-2" style={{ borderTop: '1px solid #1a0000' }}>
+        <button
+          type="button"
+          onClick={onSkip}
+          disabled={skipping}
+          className="text-sm font-semibold transition-colors disabled:opacity-50"
+          style={{ color: '#4a2020' }}
+          onMouseEnter={e => !skipping && (e.target.style.color = '#9a8080')}
+          onMouseLeave={e => (e.target.style.color = '#4a2020')}
+        >
+          {skipping ? 'Setting up demo…' : 'Skip for now — explore the app →'}
+        </button>
+        <p className="text-xs text-center" style={{ color: '#2a1010' }}>
+          Creates a demo program so you can try every feature right away.
+        </p>
       </div>
     </div>
   )
@@ -339,8 +357,9 @@ export default function Onboarding() {
     primaryColor: '#cc1111',
     secondaryColor: '#ffffff',
   })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [skipping, setSkipping] = useState(false)
+  const [error, setError]       = useState('')
 
   function validateStep() {
     if (step === 1 && !accountType) {
@@ -365,6 +384,61 @@ export default function Onboarding() {
   function handleBack() {
     setError('')
     setStep(s => s - 1)
+  }
+
+  async function handleSkip() {
+    setError('')
+    setSkipping(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not signed in.')
+
+      // 1. Account
+      const { data: account, error: accountErr } = await supabase
+        .from('accounts')
+        .insert({
+          name: 'Demo Program',
+          account_type: 'single',
+          plan_type: 'monthly',
+          status: 'demo',
+        })
+        .select()
+        .single()
+      if (accountErr) throw accountErr
+
+      // 2. Organization
+      const { data: org, error: orgErr } = await supabase
+        .from('organizations')
+        .insert({
+          account_id: account.id,
+          name: 'Demo Program',
+          slug: `demo-${account.id.slice(0, 8)}`,
+          sport: 'Football',
+          primary_color: '#cc1111',
+          secondary_color: '#ffffff',
+        })
+        .select()
+        .single()
+      if (orgErr) throw orgErr
+
+      // 3. Profile (upsert in case one was already created)
+      const { error: profileErr } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          account_id: account.id,
+          org_id: org.id,
+          email: user.email ?? '',
+          role: 'owner',
+          full_name: 'Demo Coach',
+        }, { onConflict: 'id' })
+      if (profileErr) throw profileErr
+
+      navigate('/dashboard')
+    } catch (err) {
+      setError(err.message ?? 'Something went wrong.')
+      setSkipping(false)
+    }
   }
 
   async function handleSubmit() {
@@ -443,7 +517,7 @@ export default function Onboarding() {
       >
         <ProgressBar step={step} />
 
-        {step === 1 && <Step1 accountType={accountType} setAccountType={setAccountType} />}
+        {step === 1 && <Step1 accountType={accountType} setAccountType={setAccountType} onSkip={handleSkip} skipping={skipping} />}
         {step === 2 && <Step2 form={form} setForm={setForm} />}
         {step === 3 && <Step3 accountType={accountType} form={form} />}
 
