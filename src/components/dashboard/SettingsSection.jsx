@@ -16,6 +16,24 @@ import { useAuth } from '../../context/AuthContext'
 const SPORTS = ['Football','Basketball','Volleyball','Baseball','Softball','Soccer','Track','Wrestling','Tennis','Other']
 const ROLES  = ['admin','coach','readonly']
 
+// Role badge colours
+const ROLE_STYLE = {
+  admin:    { bg: '#3a0000', color: '#ff6666', border: '#6a0000' },
+  coach:    { bg: '#001a2e', color: '#60a5fa', border: '#003a5e' },
+  readonly: { bg: '#1a1a1a', color: '#9a9a9a', border: '#333333' },
+}
+function RoleBadge({ role }) {
+  const s = ROLE_STYLE[role] ?? ROLE_STYLE.readonly
+  return (
+    <span
+      className="text-xs font-bold px-2 py-0.5 rounded-full capitalize"
+      style={{ backgroundColor: s.bg, color: s.color, border: `1px solid ${s.border}` }}
+    >
+      {role}
+    </span>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Section must live OUTSIDE SettingsSection so React never creates a new
 // component-type reference on each render — that would unmount/remount every
@@ -44,6 +62,14 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   const [saveErr, setSaveErr] = useState('')
 
   const [coaches, setCoaches]         = useState([])
+  // Edit-role inline state
+  const [editingId,   setEditingId]   = useState(null)   // coach id being edited
+  const [editRole,    setEditRole]    = useState('')      // draft role value
+  const [savingRole,  setSavingRole]  = useState(false)
+  // Remove confirmation
+  const [removeId,    setRemoveId]    = useState(null)   // coach id pending removal
+  const [removing,    setRemoving]    = useState(false)
+
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteName, setInviteName]   = useState('')
   const [inviteRole, setInviteRole]   = useState('coach')
@@ -199,9 +225,48 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
     if (!error) onOrgUpdate?.({ ...org, background_url: null })
   }
 
-  async function updateRole(id, role) {
-    await supabase.from('profiles').update({ role }).eq('id', id)
-    loadCoaches()
+  function startEditRole(coach) {
+    setEditingId(coach.id)
+    setEditRole(coach.role)
+  }
+
+  async function saveRole() {
+    if (!editingId) return
+    setSavingRole(true)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: editRole })
+        .eq('id', editingId)
+      if (error) throw error
+      setEditingId(null)
+      await loadCoaches()
+    } catch (err) {
+      console.error('[Settings] saveRole error:', err.message)
+    } finally {
+      setSavingRole(false)
+    }
+  }
+
+  async function confirmRemove() {
+    if (!removeId) return
+    setRemoving(true)
+    try {
+      // Delete the profile row — removes org access.
+      // Their Supabase auth account remains (they can still sign in but
+      // will have no profile / org and be treated as a new user).
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', removeId)
+      if (error) throw error
+      setRemoveId(null)
+      await loadCoaches()
+    } catch (err) {
+      console.error('[Settings] removeCoach error:', err.message)
+    } finally {
+      setRemoving(false)
+    }
   }
 
   async function handleInvite(e) {
@@ -373,96 +438,162 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
         {/* ── RIGHT COLUMN ── */}
         <div className="flex flex-col gap-5">
 
-          {/* Coaches & Staff */}
-          <Section title="Coaches & Staff">
-            {coaches.length === 0 ? (
-              <p className="text-sm" style={{ color: '#9a8080' }}>No coaches found for this org.</p>
-            ) : (
-              <div className="flex flex-col">
-                {coaches.map((c, i) => (
-                  <div
-                    key={c.id}
-                    className="flex items-center justify-between gap-3 py-3"
-                    style={{ borderTop: i === 0 ? 'none' : '1px solid #1a0000' }}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-white truncate">{c.full_name || '—'}</p>
-                      <p className="text-xs truncate" style={{ color: '#9a8080' }}>{c.email}</p>
-                    </div>
-                    <select
-                      value={c.role}
-                      onChange={e => updateRole(c.id, e.target.value)}
-                      disabled={c.id === profile?.id}
-                      className="rounded-lg px-2 py-2 text-xs font-bold outline-none disabled:opacity-40"
-                      style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: orgColor }}
-                    >
-                      {ROLES.map(r => <option key={r} value={r} className="capitalize">{r}</option>)}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            )}
+          {/* Coaches & Staff — admin only */}
+          {profile?.role === 'admin' && (
+            <Section title="Coaches & Staff">
+              {/* ── Coach rows ── */}
+              {coaches.length === 0 ? (
+                <p className="text-sm" style={{ color: '#9a8080' }}>No coaches found for this org.</p>
+              ) : (
+                <div className="flex flex-col divide-y" style={{ '--tw-divide-opacity': 1 }}>
+                  {coaches.map((c, i) => {
+                    const isSelf    = c.id === user?.id
+                    const isEditing = editingId === c.id
 
-            {/* Invite form */}
-            <form onSubmit={handleInvite} className="flex flex-col gap-3 pt-3" style={{ borderTop: '1px solid #2a0000' }}>
-              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#9a8080' }}>Invite Coach</p>
+                    return (
+                      <div
+                        key={c.id}
+                        className="flex flex-col gap-2 py-3"
+                        style={{ borderTop: i === 0 ? 'none' : '1px solid #1a0000' }}
+                      >
+                        {/* Top row: name + email + badge + actions */}
+                        <div className="flex items-center gap-2">
+                          {/* Identity */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-semibold text-white truncate">
+                                {c.full_name || '—'}
+                                {isSelf && (
+                                  <span className="ml-1.5 text-xs font-normal" style={{ color: '#9a8080' }}>(you)</span>
+                                )}
+                              </p>
+                              {!isEditing && <RoleBadge role={c.role} />}
+                            </div>
+                            <p className="text-xs truncate" style={{ color: '#9a8080' }}>{c.email}</p>
+                          </div>
 
-              <input
-                type="text"
-                value={inviteName}
-                onChange={e => setInviteName(e.target.value)}
-                placeholder="Coach full name (optional)"
-                className="rounded-lg px-3 py-3 text-sm outline-none"
-                style={inputStyle}
-              />
+                          {/* Action buttons — not shown while editing */}
+                          {!isEditing && (
+                            <div className="flex gap-1.5 shrink-0">
+                              <button
+                                onClick={() => startEditRole(c)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                                style={{ border: '1px solid #2a0000', color: '#9a8080' }}
+                              >
+                                Edit role
+                              </button>
+                              {/* No remove button for the current user */}
+                              {!isSelf && (
+                                <button
+                                  onClick={() => setRemoveId(c.id)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                                  style={{ border: '1px solid #3a0000', color: '#cc4444' }}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
 
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  required
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
-                  placeholder="coach@school.edu"
-                  className="flex-1 rounded-lg px-3 py-3 text-sm outline-none"
-                  style={inputStyle}
-                />
-                <select
-                  value={inviteRole}
-                  onChange={e => setInviteRole(e.target.value)}
-                  className="rounded-lg px-2 py-3 text-xs font-bold outline-none"
-                  style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}
-                >
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                disabled={inviting}
-                className="py-3 rounded-lg text-sm font-bold text-white disabled:opacity-50"
-                style={{ backgroundColor: orgColor }}
-              >
-                {inviting ? 'Sending…' : 'Send Invite'}
-              </button>
-
-              {inviteErr && (
-                <p className="text-xs p-3 rounded-lg" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
-                  {inviteErr}
-                </p>
-              )}
-
-              {inviteSent && (
-                <div className="p-3 rounded-lg" style={{ backgroundColor: '#001a00', border: '1px solid #003300' }}>
-                  <p className="text-xs font-semibold" style={{ color: '#66cc88' }}>
-                    ✓ Invite sent to {inviteSent}
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: '#9a9a9a' }}>
-                    They'll receive an email with a link to set their password and join your program.
-                  </p>
+                        {/* Inline edit-role row */}
+                        {isEditing && (
+                          <div className="flex items-center gap-2 pl-0">
+                            <select
+                              value={editRole}
+                              onChange={e => setEditRole(e.target.value)}
+                              className="flex-1 rounded-lg px-3 py-2 text-sm font-bold outline-none capitalize"
+                              style={{ backgroundColor: '#1a0000', border: '1px solid #3a0000', color: '#fff' }}
+                            >
+                              {ROLES.map(r => (
+                                <option key={r} value={r} className="capitalize">{r}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={saveRole}
+                              disabled={savingRole}
+                              className="px-4 py-2 rounded-lg text-xs font-bold text-white disabled:opacity-50 shrink-0"
+                              style={{ backgroundColor: orgColor }}
+                            >
+                              {savingRole ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              disabled={savingRole}
+                              className="px-3 py-2 rounded-lg text-xs font-semibold shrink-0"
+                              style={{ border: '1px solid #2a0000', color: '#9a8080' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
-            </form>
-          </Section>
+
+              {/* ── Invite form ── */}
+              <form onSubmit={handleInvite} className="flex flex-col gap-3 pt-3" style={{ borderTop: '1px solid #2a0000' }}>
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#9a8080' }}>Invite Coach</p>
+
+                <input
+                  type="text"
+                  value={inviteName}
+                  onChange={e => setInviteName(e.target.value)}
+                  placeholder="Coach full name (optional)"
+                  className="rounded-lg px-3 py-3 text-sm outline-none"
+                  style={inputStyle}
+                />
+
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    placeholder="coach@school.edu"
+                    className="flex-1 rounded-lg px-3 py-3 text-sm outline-none"
+                    style={inputStyle}
+                  />
+                  <select
+                    value={inviteRole}
+                    onChange={e => setInviteRole(e.target.value)}
+                    className="rounded-lg px-2 py-3 text-xs font-bold outline-none"
+                    style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}
+                  >
+                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={inviting}
+                  className="py-3 rounded-lg text-sm font-bold text-white disabled:opacity-50"
+                  style={{ backgroundColor: orgColor }}
+                >
+                  {inviting ? 'Sending…' : 'Send Invite'}
+                </button>
+
+                {inviteErr && (
+                  <p className="text-xs p-3 rounded-lg" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
+                    {inviteErr}
+                  </p>
+                )}
+
+                {inviteSent && (
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#001a00', border: '1px solid #003300' }}>
+                    <p className="text-xs font-semibold" style={{ color: '#66cc88' }}>
+                      ✓ Invite sent to {inviteSent}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: '#9a9a9a' }}>
+                      They'll receive an email with a link to set their password and join your program.
+                    </p>
+                  </div>
+                )}
+              </form>
+            </Section>
+          )}
 
           {/* Account info */}
           <Section title="Your Account">
@@ -482,6 +613,52 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
         </div>
       </div>
+
+      {/* ── Remove coach confirmation modal ── */}
+      {removeId && (() => {
+        const coach = coaches.find(c => c.id === removeId)
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ backgroundColor: 'rgba(0,0,0,0.88)' }}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
+              style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}
+            >
+              <h3 className="font-bold text-white text-lg">Remove coach?</h3>
+              <p className="text-sm leading-relaxed" style={{ color: '#9a8080' }}>
+                Remove{' '}
+                <span className="font-semibold text-white">
+                  {coach?.full_name || coach?.email || 'this coach'}
+                </span>{' '}
+                from your program? They will lose access immediately.
+              </p>
+              <p className="text-xs" style={{ color: '#4a2020' }}>
+                Their account is not deleted — they just lose access to this org.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setRemoveId(null)}
+                  disabled={removing}
+                  className="flex-1 py-3 rounded-lg text-sm font-semibold disabled:opacity-50"
+                  style={{ border: '1px solid #2a0000', color: '#9a8080' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmRemove}
+                  disabled={removing}
+                  className="flex-1 py-3 rounded-lg text-sm font-bold text-white disabled:opacity-50"
+                  style={{ backgroundColor: '#cc1111' }}
+                >
+                  {removing ? 'Removing…' : 'Remove'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
