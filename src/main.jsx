@@ -15,14 +15,25 @@ import App from './App.jsx'
 // Fix: run cleanup inside an async init() and only call createRoot() after
 // the awaits complete AND a 500ms settling delay has passed. React — and
 // therefore Supabase auth — never starts until the page is SW-free.
+/** Only target Spotify-owned service workers — leave any others untouched. */
+function isSpotifySW(reg) {
+  const url   = (reg.scriptURL ?? '').toLowerCase()
+  const scope = (reg.scope     ?? '').toLowerCase()
+  return url.includes('spotify') || scope.includes('spotify')
+}
+
 async function init() {
   if ('serviceWorker' in navigator) {
     try {
       const regs = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(regs.map(r => {
-        console.log('[SW] Unregistering before React mount:', r.scope)
-        return r.unregister()
-      }))
+      await Promise.all(
+        regs
+          .filter(r => isSpotifySW(r))
+          .map(r => {
+            console.log('[SW] Unregistering Spotify SW before React mount:', r.scope)
+            return r.unregister()
+          })
+      )
     } catch (e) {
       console.warn('[SW] Unregister error (non-fatal):', e.message)
     }
@@ -43,11 +54,12 @@ async function init() {
   // route requests through the SW that was just told to unregister.
   await new Promise(resolve => setTimeout(resolve, 1000))
 
-  // Nuke any SW that sneaks back after page unload (e.g. Spotify SDK re-register)
+  // On page close, remove any Spotify SW that registered during this session
+  // so it can't intercept fetches on the next load.
   window.addEventListener('beforeunload', () => {
     if (!('serviceWorker' in navigator)) return
     navigator.serviceWorker.getRegistrations()
-      .then(regs => regs.forEach(r => r.unregister()))
+      .then(regs => regs.filter(r => isSpotifySW(r)).forEach(r => r.unregister()))
       .catch(() => {})
   })
 

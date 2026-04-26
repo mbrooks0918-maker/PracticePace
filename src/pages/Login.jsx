@@ -5,16 +5,28 @@ import Logo    from '../components/Logo'
 import Tagline from '../components/Tagline'
 
 // ── SW safety-net helper ──────────────────────────────────────────────────────
-// Runs the same cleanup as main.jsx in case a service worker registered itself
-// between app boot and the user landing on the login page.
+// Runs on Login mount in case a Spotify SW registered after main.jsx's startup
+// cleanup (e.g. returning visitor with a cached SDK script).
+// Only touches Spotify-owned SWs — leaves all others alone.
+
+function isSpotifySW(reg) {
+  const url   = (reg.scriptURL ?? '').toLowerCase()
+  const scope = (reg.scope     ?? '').toLowerCase()
+  return url.includes('spotify') || scope.includes('spotify')
+}
+
 async function cleanupServiceWorkers() {
   try {
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(regs.map(r => {
-        console.log('[SW/Login] Unregistering:', r.scope)
-        return r.unregister()
-      }))
+      await Promise.all(
+        regs
+          .filter(r => isSpotifySW(r))
+          .map(r => {
+            console.log('[SW/Login] Unregistering Spotify SW:', r.scope)
+            return r.unregister()
+          })
+      )
     }
     if ('caches' in window) {
       const keys = await caches.keys()
