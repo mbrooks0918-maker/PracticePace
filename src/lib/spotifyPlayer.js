@@ -104,15 +104,24 @@ function initPlayer() {
     enableMediaSession: false,
   })
 
-  player.addListener('ready', ({ device_id }) => {
-    console.log('[Spotify] SDK ready — device_id:', device_id)
+  player.addListener('ready', async ({ device_id }) => {
+    console.log('[Spotify] Device ready:', device_id)
     deviceId  = device_id
     sdkReady  = true
     sdkFailed = false
     localStorage.setItem(DEVICE_KEY, device_id)
-    // Silently claim this device; don't start playing
-    transferPlayback(device_id, false).catch(() => {})
     emit('state', getSnapshot())
+
+    // Wait 1 s for the SDK to fully initialise, then claim the device.
+    // Using true (start_playing) ensures Spotify treats this as the active
+    // device immediately and doesn't hand control back to another client.
+    await new Promise(r => setTimeout(r, 1000))
+    try {
+      await transferPlayback(device_id, true)
+      console.log('[Spotify] Transfer complete')
+    } catch (err) {
+      console.warn('[Spotify] Transfer error (non-fatal):', err.message)
+    }
 
     // Leave the Spotify SW running — it is required for audio playback.
     // Cleanup happens via the beforeunload listener in main.jsx when the
@@ -125,8 +134,27 @@ function initPlayer() {
     emit('state', getSnapshot())
   })
 
+  // 'not_playing_locally' fires when Spotify transfers playback away from our
+  // device (e.g. user plays on phone). Re-claim immediately so the in-app
+  // player stays the active device.
+  player.addListener('not_playing_locally', async () => {
+    console.warn('[Spotify] Playback left this device — re-claiming...')
+    if (!deviceId) return
+    try {
+      await transferPlayback(deviceId, true)
+      console.log('[Spotify] Re-claim transfer complete')
+    } catch (err) {
+      console.warn('[Spotify] Re-claim transfer error (non-fatal):', err.message)
+    }
+  })
+
   player.addListener('player_state_changed', state => {
     if (!state) return
+    console.log('[Spotify] Player state:', {
+      paused:   state.paused,
+      position: state.position,
+      track:    state.track_window?.current_track?.name,
+    })
     isPlaying = !state.paused
     const track = state.track_window?.current_track
     if (track) {
@@ -255,15 +283,29 @@ export async function playTrack(contextUri) {
   if (!deviceId) throw new Error('No device ready — please wait for the player to connect, or select an external device.')
 
   const uri = normalizeSpotifyUri(contextUri)
-  console.log('[Spotify] play →', { uri, deviceId, sdkReady })
+  console.log('[Spotify] Playing:', uri ?? '(no URI — current queue)')
 
-  if (!sdkReady) {
-    // External device: transfer first then play
-    await transferPlayback(deviceId, false)
-    await new Promise(r => setTimeout(r, 300))
+  // Verify PracticePace is still the active device before attempting play.
+  // Spotify silently kills playback if the play command targets an inactive device.
+  try {
+    const list    = await getDevices()
+    const ourDev  = list?.find(d => d.id === deviceId)
+    const isActive = ourDev?.is_active ?? false
+    console.log('[Spotify] Device check —', { deviceId, isActive, found: !!ourDev })
+
+    if (!isActive) {
+      console.log('[Spotify] Not active device — transferring before play...')
+      await transferPlayback(deviceId, false)
+      await new Promise(r => setTimeout(r, 500))
+      console.log('[Spotify] Transfer complete')
+    }
+  } catch (err) {
+    // Device check is best-effort — proceed anyway
+    console.warn('[Spotify] Device check error (continuing):', err.message)
   }
 
   await apiPlay({ contextUri: uri, deviceId })
+  console.log('[Spotify] Play command sent')
   isPlaying    = true
   currentTrack = currentTrack ?? null
   emit('state', getSnapshot())
