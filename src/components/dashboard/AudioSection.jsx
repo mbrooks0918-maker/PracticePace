@@ -161,7 +161,7 @@ function SpotifyPlayer() {
               Select a Spotify device below to play music
             </p>
             <p className="text-xs mt-1" style={{ color: '#9a8080' }}>
-              Open Spotify on your phone or laptop, then tap Refresh to find it.
+              For best results on iPad, use Chrome browser. Open Spotify on your phone or another device, then select it below to control music from PracticePace.
             </p>
           </div>
         )}

@@ -219,13 +219,15 @@ export async function setupSpotifySDK() {
   if (player)             return   // already initialised
   if (sdkLoading)         return   // already in flight
 
-  // The Spotify Web Playback SDK requires Widevine DRM which is not available
-  // on iOS/iPadOS (Safari uses FairPlay, not Widevine). Skip SDK init and fall
-  // back to the external-device API immediately.
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  if (isIOS) {
-    console.log('[Spotify] iOS/iPadOS detected — Web Playback SDK not supported on this platform. Switching to external device mode.')
+  // The Spotify Web Playback SDK requires Widevine DRM which Safari on iOS/iPadOS
+  // does not support (Safari uses FairPlay). Chrome on iPad does support Widevine,
+  // so only skip the SDK when on iOS/iPadOS Safari specifically.
+  const isIOS    = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'Mac' && navigator.maxTouchPoints > 1)
+  const isChrome = /CriOS|Chrome/.test(navigator.userAgent) && !/Edg/.test(navigator.userAgent)
+  const skipSDK  = isIOS && !isChrome
+  if (skipSDK) {
+    console.log('[Spotify] iOS/iPadOS Safari detected — Web Playback SDK not supported (no Widevine). Switching to external device mode.')
     sdkFailed = true
     emit('state', getSnapshot())
     return
