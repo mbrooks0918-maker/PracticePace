@@ -77,11 +77,9 @@ async function clearServiceWorkers() {
           return r.unregister()
         })
     )
-    // Also nuke all caches so no stale SW response is replayed
-    if ('caches' in window) {
-      const keys = await caches.keys()
-      await Promise.all(keys.map(k => caches.delete(k)))
-    }
+    // Do NOT delete caches here — the Spotify SDK uses the Cache API for
+    // legitimate audio resources. Wiping all caches before the SDK loads
+    // has been causing playback failures.
   } catch (err) {
     console.warn('[SW] Cleanup error (non-fatal):', err.message)
   }
@@ -301,25 +299,21 @@ export async function playTrack(contextUri) {
   if (!deviceId) throw new Error('No device ready — please wait for the player to connect, or select an external device.')
 
   const uri = normalizeSpotifyUri(contextUri)
-  console.log('[Spotify] Playing:', uri ?? '(no URI — current queue)')
+  console.log('[Spotify] Playing:', uri ?? '(no URI — current queue)', '| deviceId:', deviceId, '| sdkReady:', sdkReady)
 
-  // Verify PracticePace is still the active device before attempting play.
-  // Spotify silently kills playback if the play command targets an inactive device.
-  try {
-    const list    = await getDevices()
-    const ourDev  = list?.find(d => d.id === deviceId)
-    const isActive = ourDev?.is_active ?? false
-    console.log('[Spotify] Device check —', { deviceId, isActive, found: !!ourDev })
-
-    if (!isActive) {
-      console.log('[Spotify] Not active device — transferring before play...')
+  // When the SDK player is ready it owns device management — do NOT call
+  // transferPlayback() first. Doing so races with the SDK's internal state
+  // machine and causes the "Cannot read properties of undefined" crash.
+  // For external devices (sdkReady=false) we still need to transfer first.
+  if (!sdkReady) {
+    try {
+      console.log('[Spotify] External device — transferring before play')
       await transferPlayback(deviceId, false)
       await new Promise(r => setTimeout(r, 500))
       console.log('[Spotify] Transfer complete')
+    } catch (err) {
+      console.warn('[Spotify] Transfer error (continuing):', err?.message)
     }
-  } catch (err) {
-    // Device check is best-effort — proceed anyway
-    console.warn('[Spotify] Device check error (continuing):', err.message)
   }
 
   await apiPlay({ contextUri: uri, deviceId })
