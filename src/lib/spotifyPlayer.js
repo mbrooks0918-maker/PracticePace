@@ -134,22 +134,22 @@ function initPlayer() {
     emit('state', getSnapshot())
   })
 
-  // 'not_playing_locally' fires when Spotify transfers playback away from our
-  // device (e.g. user plays on phone). Re-claim immediately so the in-app
-  // player stays the active device.
-  player.addListener('not_playing_locally', async () => {
-    console.warn('[Spotify] Playback left this device — re-claiming...')
-    if (!deviceId) return
-    try {
-      await transferPlayback(deviceId, true)
-      console.log('[Spotify] Re-claim transfer complete')
-    } catch (err) {
-      console.warn('[Spotify] Re-claim transfer error (non-fatal):', err.message)
+  player.addListener('player_state_changed', async state => {
+    // null state means Spotify transferred playback away from this device.
+    // Re-claim it so the in-app player stays active.
+    if (!state) {
+      console.warn('[Spotify] Player state null — playback left this device, re-claiming...')
+      if (deviceId) {
+        try {
+          await transferPlayback(deviceId, true)
+          console.log('[Spotify] Re-claim transfer complete')
+        } catch (err) {
+          console.warn('[Spotify] Re-claim transfer error (non-fatal):', err.message)
+        }
+      }
+      return
     }
-  })
 
-  player.addListener('player_state_changed', state => {
-    if (!state) return
     console.log('[Spotify] Player state:', {
       paused:   state.paused,
       position: state.position,

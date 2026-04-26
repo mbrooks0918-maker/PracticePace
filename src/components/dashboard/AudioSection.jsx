@@ -49,7 +49,10 @@ function SpotifyPlayer() {
     setError('')
     try {
       const list = await getPlaylists()
-      setPlaylists(list)
+      // Filter out any null items Spotify API occasionally returns
+      const valid = (list ?? []).filter(p => p && p.id && p.name)
+      console.log('[Spotify] Setting playlists in state:', valid.length)
+      setPlaylists(valid)
     } catch (e) {
       console.log('[Spotify] Playlist fetch error in UI:', e)
       setError(e.message)
