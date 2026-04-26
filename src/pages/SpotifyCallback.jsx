@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { exchangeCode } from '../lib/spotify'
-import { setupSpotifySDK } from '../lib/spotifyPlayer'
+import { startPolling } from '../lib/spotifyPlayer'
 
 export default function SpotifyCallback() {
   const navigate = useNavigate()
-  const [error, setError]   = useState('')
+  const [error, setError] = useState('')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -26,8 +26,7 @@ export default function SpotifyCallback() {
 
     exchangeCode(code)
       .then(() => {
-        // Token is now stored — kick off SDK init before navigating
-        setupSpotifySDK()
+        startPolling()   // start track polling now that we have a token
         navigate('/dashboard')
       })
       .catch(e => {

@@ -73,24 +73,43 @@ export async function getAuthUrl() {
   return `https://accounts.spotify.com/authorize?${params}`
 }
 
+// ── Internal helper: call our serverless token endpoint ───────────────────────
+// Avoids hitting Spotify directly from the browser (no client secret exposure,
+// no non-JSON parse errors, proper server-side error logging).
+async function callTokenEndpoint(body) {
+  const res = await fetch('/api/spotify-token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  })
+
+  // Always read as text first — the serverless fn guarantees JSON, but guard anyway
+  const text = await res.text()
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error(`Unexpected response from token server: ${text.slice(0, 120)}`)
+  }
+
+  if (!res.ok || data.error) {
+    throw new Error(data.error_description ?? data.error ?? `Token request failed (${res.status})`)
+  }
+  return data
+}
+
 // ── Exchange code for token ───────────────────────────────────────────────────
 export async function exchangeCode(code) {
   const verifier = localStorage.getItem(VERIFIER_KEY)
   if (!verifier) throw new Error('No PKCE verifier found — please try connecting again.')
 
-  const res = await fetch('https://accounts.spotify.com/api/token', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     CLIENT_ID,
-      grant_type:    'authorization_code',
-      code,
-      redirect_uri:  REDIRECT_URI,
-      code_verifier: verifier,
-    }),
+  const data = await callTokenEndpoint({
+    grant_type:    'authorization_code',
+    code,
+    redirect_uri:  REDIRECT_URI,
+    code_verifier: verifier,
   })
-  const data = await res.json()
-  if (data.error) throw new Error(data.error_description ?? data.error)
+
   storeTokens(data)
   localStorage.removeItem(VERIFIER_KEY)
   return data
@@ -101,17 +120,11 @@ export async function refreshToken() {
   const rt = localStorage.getItem(REFRESH_KEY)
   if (!rt) throw new Error('No refresh token stored.')
 
-  const res = await fetch('https://accounts.spotify.com/api/token', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     CLIENT_ID,
-      grant_type:    'refresh_token',
-      refresh_token: rt,
-    }),
+  const data = await callTokenEndpoint({
+    grant_type:    'refresh_token',
+    refresh_token: rt,
   })
-  const data = await res.json()
-  if (data.error) throw new Error(data.error_description ?? data.error)
+
   storeTokens(data)
   return data.access_token
 }

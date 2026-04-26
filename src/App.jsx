@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { OrgProvider } from './context/OrgContext'
@@ -11,12 +10,8 @@ import Script from './pages/Script'
 import Scoreboard from './pages/Scoreboard'
 import Admin from './pages/Admin'
 import SpotifyCallback from './pages/SpotifyCallback'
-import { setupSpotifySDK } from './lib/spotifyPlayer'
 
 export default function App() {
-  // Initialize the Spotify SDK singleton once on app load.
-  // The player lives at module level and never unmounts with components.
-  useEffect(() => { try { setupSpotifySDK() } catch {} }, [])
 
   return (
     <BrowserRouter>
