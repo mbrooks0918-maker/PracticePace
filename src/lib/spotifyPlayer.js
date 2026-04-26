@@ -127,14 +127,7 @@ function initPlayer() {
     sdkFailed = false
     localStorage.setItem(DEVICE_KEY, device_id ?? '')
     emit('state', getSnapshot())
-
-    // Defer async transfer so the listener returns synchronously.
-    // Wait 1 s first — the SDK needs a moment before accepting transfers.
-    setTimeout(() => {
-      transferPlayback(device_id, false)
-        .then(() => console.log('[Spotify] Transfer complete'))
-        .catch(err => console.warn('[Spotify] Transfer error (non-fatal):', err?.message))
-    }, 1000)
+    // Let the player establish naturally — no transfer call here.
   })
 
   player.addListener('not_ready', ({ device_id }) => {
@@ -143,19 +136,9 @@ function initPlayer() {
     emit('state', getSnapshot())
   })
 
-  // Synchronous listener — no async/await inside.
   player.addListener('player_state_changed', state => {
     if (!state) {
-      // null state = Spotify transferred playback away from this device.
-      // Schedule a re-claim outside the listener so it returns synchronously.
-      console.warn('[Spotify] Player state null — scheduling re-claim')
-      if (deviceId) {
-        setTimeout(() => {
-          transferPlayback(deviceId, true)
-            .then(() => console.log('[Spotify] Re-claim transfer complete'))
-            .catch(err => console.warn('[Spotify] Re-claim error (non-fatal):', err?.message))
-        }, 500)
-      }
+      console.log('[Spotify] Player state: null (playback moved to another device)')
       return
     }
 
