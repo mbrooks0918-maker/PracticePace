@@ -229,12 +229,19 @@ export async function transferPlayback(deviceId, play = false) {
 
 // ── Playlists ─────────────────────────────────────────────────────────────────
 export async function getPlaylists() {
+  console.log('[Spotify] Fetching playlists — token present:', !!getStoredToken(), '| expired:', isTokenExpired())
   const all = []
   let url   = '/me/playlists?limit=50'
-  while (url) {
-    const data = await api(url.startsWith('http') ? url.replace('https://api.spotify.com/v1', '') : url)
-    all.push(...(data?.items ?? []))
-    url = data?.next ? data.next.replace('https://api.spotify.com/v1', '') : null
+  try {
+    while (url) {
+      const data = await api(url.startsWith('http') ? url.replace('https://api.spotify.com/v1', '') : url)
+      all.push(...(data?.items ?? []))
+      url = data?.next ? data.next.replace('https://api.spotify.com/v1', '') : null
+    }
+    console.log('[Spotify] Playlists loaded:', all.length)
+    return all
+  } catch (err) {
+    console.log('[Spotify] Playlist fetch error:', err)
+    throw err
   }
-  return all
 }

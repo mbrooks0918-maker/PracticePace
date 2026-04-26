@@ -43,11 +43,26 @@ function SpotifyPlayer() {
     return unsub
   }, [])
 
-  // Load playlists once
+  // Load playlists — also called by the Refresh button
+  async function fetchPlaylists() {
+    setLoadingLists(true)
+    setError('')
+    try {
+      const list = await getPlaylists()
+      setPlaylists(list)
+    } catch (e) {
+      console.log('[Spotify] Playlist fetch error in UI:', e)
+      setError(e.message)
+    } finally {
+      setLoadingLists(false)
+    }
+  }
+
+  // On mount: verify token is present and load playlists
   useEffect(() => {
-    getPlaylists()
-      .then(list => { setPlaylists(list); setLoadingLists(false) })
-      .catch(e   => { setError(e.message); setLoadingLists(false) })
+    const token = localStorage.getItem('pp_spotify_token')
+    console.log('[Spotify] AudioSection mount — token present:', !!token)
+    fetchPlaylists()
   }, [])
 
   // When SDK fails auto-open device picker and refresh
@@ -289,9 +304,25 @@ function SpotifyPlayer() {
 
         {/* ── Playlist selector ── */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold uppercase tracking-widest" style={{ color: '#9a8080' }}>
-            Play a Playlist
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold uppercase tracking-widest" style={{ color: '#9a8080' }}>
+              Play a Playlist
+            </label>
+            <button
+              onClick={fetchPlaylists}
+              disabled={loadingLists}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-opacity disabled:opacity-50"
+              style={{ backgroundColor: '#1a2a1a', color: SPOTIFY_GREEN }}>
+              {loadingLists
+                ? <div className="w-3 h-3 rounded-full border border-current animate-spin" style={{ borderTopColor: 'transparent' }} />
+                : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+              }
+              Refresh
+            </button>
+          </div>
           {loadingLists
             ? <div className="flex items-center gap-2 py-3">
                 <div className="w-4 h-4 rounded-full border-2 animate-spin"
@@ -382,6 +413,15 @@ function ConnectScreen() {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export default function AudioSection({ orgColor }) {
-  const [connected] = useState(() => isConnected())
+  // Re-derive on mount in case the token landed in localStorage after the
+  // initial render (e.g. OAuth callback race, tab refocus).
+  const [connected, setConnected] = useState(() => isConnected())
+
+  useEffect(() => {
+    const token = localStorage.getItem('pp_spotify_token')
+    console.log('[Spotify] AudioSection root mount — token present:', !!token, '| isConnected:', isConnected())
+    if (isConnected() && !connected) setConnected(true)
+  }, [])
+
   return connected ? <SpotifyPlayer orgColor={orgColor} /> : <ConnectScreen />
 }
