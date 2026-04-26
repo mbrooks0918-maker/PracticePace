@@ -333,6 +333,8 @@ function FootballScoreboard({ orgColor }) {
 const PERIODS_Q = ['Q1','Q2','Q3','Q4','OT']
 const PERIODS_H = ['H1','H2','OT']
 
+const SHOT_AMBER = '#f59e0b'
+
 function BasketballScoreboard({ orgColor }) {
   const [home, setHome] = useState({ name: 'HOME', score: 0, fouls: 0 })
   const [away, setAway] = useState({ name: 'AWAY', score: 0, fouls: 0 })
@@ -363,32 +365,32 @@ function BasketballScoreboard({ orgColor }) {
   function resetShot(p = shotPreset) { setShotRun(false); setShotSecs(p); setShotPreset(p) }
   function adj(setTeam, pts) { setTeam(t => ({ ...t, score: Math.max(0, t.score + pts) })) }
 
+  // ── Sub-components ───────────────────────────────────────────────────────────
   const ScoreButtons = ({ setTeam }) => (
-    <div className="flex gap-2 justify-center w-full">
+    <div className="flex gap-2 w-full">
       {[
-        { pts: 1, label: 'Free Throw' },
-        { pts: 2, label: 'Basket' },
-        { pts: 3, label: 'Three' },
+        { pts: 1, label: 'FT' },
+        { pts: 2, label: '2pt' },
+        { pts: 3, label: '3pt' },
       ].map(({ pts, label }) => (
         <button
           key={pts}
           onClick={() => adj(setTeam, pts)}
-          className="flex-1 flex flex-col items-center justify-center rounded-xl font-black py-2"
+          className="flex-1 flex flex-col items-center justify-center rounded-xl font-black py-3"
           style={{
             backgroundColor: `${orgColor}22`,
             border:          `2px solid ${orgColor}`,
             color:            orgColor,
-            minHeight: 56,
           }}
         >
-          <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+{pts}</span>
-          <span style={{ fontSize: '0.6rem', lineHeight: 1.4, color: `${orgColor}99` }}>{label}</span>
+          <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>+{pts}</span>
+          <span style={{ fontSize: '0.65rem', lineHeight: 1.4, color: `${orgColor}99` }}>{label}</span>
         </button>
       ))}
       <button
         onClick={() => adj(setTeam, -1)}
-        className="flex items-center justify-center rounded-xl font-bold"
-        style={{ backgroundColor:'#1a0000', border:'1px solid #3a0000', color:'#6a4040', minHeight: 56, width: 40, fontSize: '0.9rem' }}
+        className="flex items-center justify-center rounded-xl font-bold px-3"
+        style={{ backgroundColor:'#1a0000', border:'1px solid #3a0000', color:'#6a4040', fontSize: '0.85rem' }}
       >
         -1
       </button>
@@ -398,115 +400,188 @@ function BasketballScoreboard({ orgColor }) {
   const FoulCounter = ({ team, setTeam }) => {
     const bonus = team.fouls >= 7
     return (
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <button onClick={() => setTeam(t => ({ ...t, fouls: Math.max(0, t.fouls-1) }))}
-          className="w-9 h-9 rounded-lg text-sm font-bold" style={{ border:'1px solid #2a0000', color:'#9a8080' }}>−</button>
-        <div className="text-center w-16">
-          <div className="font-black text-lg" style={{ color: bonus ? '#f59e0b' : '#fff', fontVariantNumeric:'tabular-nums' }}>{team.fouls}</div>
-          <div className="text-xs font-bold" style={{ color: bonus ? '#f59e0b' : '#4a2020' }}>{bonus ? 'BONUS' : 'FOULS'}</div>
+          className="w-8 h-8 rounded-lg text-sm font-bold" style={{ border:'1px solid #2a0000', color:'#9a8080' }}>−</button>
+        <div className="text-center" style={{ minWidth: 48 }}>
+          <div className="font-black text-base" style={{ color: bonus ? SHOT_AMBER : '#fff', fontVariantNumeric:'tabular-nums' }}>{team.fouls}</div>
+          <div className="text-xs font-bold" style={{ color: bonus ? SHOT_AMBER : '#4a2020' }}>{bonus ? 'BONUS' : 'FOULS'}</div>
         </div>
         <button onClick={() => setTeam(t => ({ ...t, fouls: t.fouls+1 }))}
-          className="w-9 h-9 rounded-lg text-sm font-bold" style={{ border:'1px solid #2a0000', color:'#9a8080' }}>+</button>
+          className="w-8 h-8 rounded-lg text-sm font-bold" style={{ border:'1px solid #2a0000', color:'#9a8080' }}>+</button>
       </div>
     )
   }
 
+  const shotWarn = shotSecs <= 5
+
+  // ── Layout ───────────────────────────────────────────────────────────────────
   return (
-    <div className="flex-1 flex flex-col gap-3 p-4 overflow-hidden min-h-0">
+    <div className="flex-1 flex flex-col gap-2 p-3 overflow-hidden min-h-0">
 
-      {/* Row 1: Game clock — centered at top */}
-      <div className="shrink-0 flex flex-col gap-3 rounded-2xl px-6 py-4"
-        style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+      {/* ── ROW 1: Shot clock LEFT | Game clock CENTER | Period controls RIGHT ── */}
+      <div className="shrink-0 flex gap-3 items-stretch">
 
-        {/* Clock — centered, full width */}
-        <div className="flex flex-col items-center gap-1">
+        {/* Shot clock box — left */}
+        <div className="flex flex-col items-center justify-between rounded-2xl px-4 py-3 shrink-0"
+          style={{
+            backgroundColor: '#0d0800',
+            border: `2px solid ${shotWarn ? '#ef4444' : SHOT_AMBER}44`,
+            boxShadow: shotWarn ? '0 0 16px #ef444433' : `0 0 16px ${SHOT_AMBER}22`,
+            minWidth: 160,
+          }}>
+          {/* Label */}
+          <span className="text-xs font-bold uppercase tracking-widest"
+            style={{ color: shotWarn ? '#ef4444' : `${SHOT_AMBER}99` }}>
+            Shot Clock
+          </span>
+
+          {/* Large amber number */}
+          <div
+            className="font-black font-mono leading-none"
+            style={{
+              fontSize: 'clamp(3rem, 8vw, 4.5rem)',
+              color: shotWarn ? '#ef4444' : SHOT_AMBER,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {pad(shotSecs)}
+          </div>
+
+          {/* +/- nudge */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setShotRun(false); setShotSecs(s => Math.max(0, s - 1)) }}
+              className="w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center"
+              style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}88` }}>−</button>
+            <button onClick={() => { setShotRun(false); setShotSecs(s => Math.min(35, s + 1)) }}
+              className="w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center"
+              style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}88` }}>+</button>
+          </div>
+
+          {/* Preset + play buttons */}
+          <div className="flex flex-wrap gap-1.5 justify-center">
+            {[35, 24, 14].map(p => (
+              <button key={p} onClick={() => resetShot(p)}
+                className="px-2 py-1 rounded-lg text-xs font-bold transition-all"
+                style={{
+                  backgroundColor: shotPreset === p ? `${SHOT_AMBER}22` : '#1a0d00',
+                  border:          `1px solid ${shotPreset === p ? SHOT_AMBER : '#3a2000'}`,
+                  color:           shotPreset === p ? SHOT_AMBER : `${SHOT_AMBER}55`,
+                }}>
+                {p}s
+              </button>
+            ))}
+            <button onClick={() => resetShot(shotPreset)}
+              className="px-2 py-1 rounded-lg text-xs font-bold"
+              style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}55` }}>
+              Rst
+            </button>
+          </div>
+
+          {/* Play/Pause */}
+          <button
+            onClick={() => setShotRun(r => !r)}
+            className="w-full py-2 rounded-xl text-sm font-bold"
+            style={{ backgroundColor: shotWarn ? '#ef444422' : `${SHOT_AMBER}22`,
+              border: `1px solid ${shotWarn ? '#ef4444' : SHOT_AMBER}`,
+              color: shotWarn ? '#ef4444' : SHOT_AMBER }}
+          >
+            {shotRun ? '⏸ Pause' : '▶ Start'}
+          </button>
+        </div>
+
+        {/* Game clock — center, dominant */}
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 rounded-2xl px-4 py-3"
+          style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
           <GameClock secs={gameSecs} warn={gameSecs <= 60} running={gameRun} onChange={setGameSecs} />
           {!gameRun && (
-            <span className="text-xs" style={{ color: '#6a4040' }}>tap clock to set time</span>
+            <span className="text-xs" style={{ color: '#6a4040' }}>tap to set time</span>
           )}
         </div>
 
-        {/* Controls row: period format/selector left · presets center · Start/Reset right */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex gap-2 flex-wrap shrink-0">
-            {['quarters','halves'].map(t => (
-              <Btn key={t} orgColor={orgColor} active={periodType===t} sm
-                onClick={() => { setPeriodType(t); setPeriod(0); setGameSecs(t==='halves'?20*60:10*60); setGameRun(false) }}>
-                {t.charAt(0).toUpperCase()+t.slice(1)}
-              </Btn>
-            ))}
-            <select
-              value={period}
-              onChange={e => { setPeriod(Number(e.target.value)); setGameSecs(pDur); setGameRun(false) }}
-              className="rounded-xl px-4 py-3 text-sm font-bold outline-none"
-              style={{ backgroundColor:'#1a0000', border:'1px solid #2a0000', color:'#fff' }}
-            >
-              {pLabels.map((l,i) => <option key={l} value={i}>{l}</option>)}
-            </select>
-          </div>
+        {/* Period controls — right */}
+        <div className="flex flex-col items-center justify-between gap-2 rounded-2xl px-4 py-3 shrink-0"
+          style={{ backgroundColor: '#110000', border: '1px solid #2a0000', minWidth: 160 }}>
+          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#9a8080' }}>
+            Period
+          </span>
 
-          <div className="flex items-center gap-2 flex-wrap justify-center flex-1">
-            <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Set Clock</span>
-            {[[10,0],[5,0],[2,0],[1,0],[0,30]].map(([m,s]) => (
-              <button
-                key={`${m}:${s}`}
-                onClick={() => { setGameRun(false); setGameSecs(m*60+s) }}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold"
-                style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#9a8080' }}
-              >
-                {m}:{pad(s)}
+          {/* Quarters / Halves toggle */}
+          <div className="flex gap-1.5">
+            {['quarters','halves'].map(t => (
+              <button key={t}
+                onClick={() => { setPeriodType(t); setPeriod(0); setGameSecs(t==='halves'?20*60:10*60); setGameRun(false) }}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                style={{
+                  backgroundColor: periodType===t ? `${orgColor}22` : '#1a0000',
+                  border:          `1px solid ${periodType===t ? orgColor : '#2a0000'}`,
+                  color:           periodType===t ? orgColor : '#9a8080',
+                }}>
+                {t === 'quarters' ? 'Qtrs' : 'Halves'}
               </button>
             ))}
           </div>
 
-          <div className="flex gap-2 shrink-0">
-            <button onClick={() => setGameRun(r => !r)}
-              className="px-8 py-3 rounded-xl text-sm font-bold text-white"
-              style={{ backgroundColor: orgColor }}>
-              {gameRun ? '⏸ Pause' : '▶ Start'}
+          {/* Period selector */}
+          <select
+            value={period}
+            onChange={e => { setPeriod(Number(e.target.value)); setGameSecs(pDur); setGameRun(false) }}
+            className="w-full rounded-xl px-3 py-2.5 text-sm font-bold outline-none text-center"
+            style={{ backgroundColor:'#1a0000', border:'1px solid #2a0000', color:'#fff' }}
+          >
+            {pLabels.map((l,i) => <option key={l} value={i}>{l}</option>)}
+          </select>
+
+          {/* Possession indicator */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Ball</span>
+            <button onClick={() => setPossession(p => p==='home' ? null : 'home')}
+              className="px-2 py-1 rounded-lg text-xs font-bold transition-all"
+              style={{
+                backgroundColor: possession==='home' ? `${orgColor}22` : '#1a0000',
+                border: `1px solid ${possession==='home' ? orgColor : '#2a0000'}`,
+                color:  possession==='home' ? orgColor : '#4a2020',
+              }}>
+              {home.name || 'HOME'}
             </button>
-            <button onClick={() => { setGameRun(false); setGameSecs(pDur) }}
-              className="px-5 py-3 rounded-xl text-sm font-semibold"
-              style={{ border:'1px solid #2a0000', color:'#9a8080' }}>
-              Reset
+            <button onClick={() => setPossession(p => p==='away' ? null : 'away')}
+              className="px-2 py-1 rounded-lg text-xs font-bold transition-all"
+              style={{
+                backgroundColor: possession==='away' ? `${orgColor}22` : '#1a0000',
+                border: `1px solid ${possession==='away' ? orgColor : '#2a0000'}`,
+                color:  possession==='away' ? orgColor : '#4a2020',
+              }}>
+              {away.name || 'AWAY'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Row 2: Teams */}
+      {/* ── ROW 2: Score panels ── */}
       <div className="flex-1 flex gap-3 min-h-0">
         {[['home', home, setHome], ['away', away, setAway]].map(([side, team, setTeam]) => (
           <div key={side} className="flex-1 flex flex-col rounded-2xl p-4 overflow-hidden"
             style={{ backgroundColor:'#110000', border:'1px solid #2a0000' }}>
 
-            {/* Team name + possession — pinned top */}
-            <div className="flex items-center gap-2 shrink-0">
-              <input
-                value={team.name}
-                onChange={e => setTeam(t => ({ ...t, name: e.target.value }))}
-                className="flex-1 text-center text-xs font-black uppercase tracking-widest rounded-xl px-3 py-2.5 outline-none"
-                style={{ backgroundColor:'transparent', border:'1px solid #2a0000', color:'#9a8080' }}
-                maxLength={20}
-              />
-              <button
-                onClick={() => setPossession(p => p === side ? null : side)}
-                title="Possession"
-                className="w-4 h-4 rounded-full shrink-0 transition-all"
-                style={{ backgroundColor: possession === side ? orgColor : '#2a0000' }}
-              />
-            </div>
+            {/* Team name */}
+            <input
+              value={team.name}
+              onChange={e => setTeam(t => ({ ...t, name: e.target.value }))}
+              className="shrink-0 text-center text-xs font-black uppercase tracking-widest rounded-xl px-3 py-2 outline-none w-full"
+              style={{ backgroundColor:'transparent', border:'1px solid #2a0000', color:'#9a8080' }}
+              maxLength={20}
+            />
 
-            {/* Score — takes all available middle space */}
+            {/* Score number — flex-1 center */}
             <div className="flex-1 flex items-center justify-center">
               <div className="font-black text-white select-none"
-                style={{ fontSize:'clamp(4.5rem,14vw,8rem)', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>
+                style={{ fontSize:'clamp(5rem,16vw,9rem)', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>
                 {team.score}
               </div>
             </div>
 
-            {/* Score buttons + foul counter — pinned bottom */}
-            <div className="flex flex-col gap-3 shrink-0">
+            {/* Score buttons — pinned bottom */}
+            <div className="shrink-0 flex flex-col gap-2">
               <ScoreButtons setTeam={setTeam} />
               <div className="flex justify-center">
                 <FoulCounter team={team} setTeam={setTeam} />
@@ -516,29 +591,34 @@ function BasketballScoreboard({ orgColor }) {
         ))}
       </div>
 
-      {/* Row 3: Shot clock */}
-      <div className="shrink-0 flex items-center gap-4 flex-wrap rounded-2xl px-6 py-4"
-        style={{ backgroundColor:'#110000', border:'1px solid #2a0000' }}>
-        <span className="text-xs uppercase tracking-widest font-bold" style={{ color:'#9a8080' }}>Shot Clock</span>
-        <AdjustableClock
-          secs={shotSecs}
-          warn={shotSecs <= 5}
-          onAdjust={d => { setShotRun(false); setShotSecs(s => Math.max(0, Math.min(35, s + d))) }}
-        />
-        <div className="flex gap-2 ml-auto flex-wrap">
-          {[35, 24, 14].map(p => (
-            <Btn key={p} onClick={() => resetShot(p)} active={shotPreset===p} orgColor={orgColor} sm>{p}s</Btn>
+      {/* ── ROW 3: Clock presets + Start/Reset ── */}
+      <div className="shrink-0 flex items-center gap-3 flex-wrap rounded-2xl px-5 py-3"
+        style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+        <span className="text-xs uppercase tracking-widest shrink-0" style={{ color: '#4a2020' }}>Set Clock</span>
+        <div className="flex gap-2 flex-wrap flex-1">
+          {[[10,0],[5,0],[2,0],[1,0],[0,30]].map(([m,s]) => (
+            <button key={`${m}:${s}`}
+              onClick={() => { setGameRun(false); setGameSecs(m*60+s) }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold"
+              style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#9a8080' }}>
+              {m}:{pad(s)}
+            </button>
           ))}
-          <Btn onClick={() => resetShot(shotPreset)} sm>Reset</Btn>
-          <button
-            onClick={() => setShotRun(r => !r)}
-            className="px-5 py-3 rounded-xl text-sm font-bold text-white"
-            style={{ backgroundColor: orgColor }}
-          >
-            {shotRun ? '⏸' : '▶'}
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={() => setGameRun(r => !r)}
+            className="px-7 py-2.5 rounded-xl text-sm font-bold text-white"
+            style={{ backgroundColor: orgColor }}>
+            {gameRun ? '⏸ Pause' : '▶ Start'}
+          </button>
+          <button onClick={() => { setGameRun(false); setGameSecs(pDur) }}
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+            style={{ border:'1px solid #2a0000', color:'#9a8080' }}>
+            Reset
           </button>
         </div>
       </div>
+
     </div>
   )
 }
