@@ -106,13 +106,26 @@ export function initPlayer() {
 }
 
 /** Call once at app startup (e.g. in App.jsx useEffect).
- *  Handles both "SDK already loaded" and "SDK not yet loaded" cases. */
+ *  Dynamically injects the Spotify SDK script so it never blocks page load
+ *  or interferes with other fetch() calls (its Service Worker can hang them). */
 export function setupSpotifySDK() {
+  if (!getStoredToken()) return  // Not connected — skip loading SDK entirely
+
   if (window.Spotify) {
     initPlayer()
-  } else {
-    // SDK fires this global when it finishes loading
-    window.onSpotifyWebPlaybackSDKReady = initPlayer
+    return
+  }
+
+  // SDK fires this global callback when it finishes loading
+  window.onSpotifyWebPlaybackSDKReady = initPlayer
+
+  // Only inject the script tag once
+  if (!document.querySelector('script[src*="spotify-player"]')) {
+    const script = document.createElement('script')
+    script.src = 'https://sdk.scdn.co/spotify-player.js'
+    script.async = true
+    script.onerror = () => console.warn('[Spotify] SDK failed to load — music features unavailable.')
+    document.body.appendChild(script)
   }
 }
 
