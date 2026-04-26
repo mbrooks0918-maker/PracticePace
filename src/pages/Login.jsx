@@ -1,41 +1,8 @@
-import { useState, useEffect } from 'react'
-import { useNavigate }         from 'react-router-dom'
-import { supabase }            from '../lib/supabase'
+import { useState }   from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase }    from '../lib/supabase'
 import Logo    from '../components/Logo'
 import Tagline from '../components/Tagline'
-
-// ── SW safety-net helper ──────────────────────────────────────────────────────
-// Runs on Login mount in case a Spotify SW registered after main.jsx's startup
-// cleanup (e.g. returning visitor with a cached SDK script).
-// Only touches Spotify-owned SWs — leaves all others alone.
-
-function isSpotifySW(reg) {
-  const url   = (reg.scriptURL ?? '').toLowerCase()
-  const scope = (reg.scope     ?? '').toLowerCase()
-  return url.includes('spotify') || scope.includes('spotify')
-}
-
-async function cleanupServiceWorkers() {
-  try {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(
-        regs
-          .filter(r => isSpotifySW(r))
-          .map(r => {
-            console.log('[SW/Login] Unregistering Spotify SW:', r.scope)
-            return r.unregister()
-          })
-      )
-    }
-    if ('caches' in window) {
-      const keys = await caches.keys()
-      await Promise.all(keys.map(k => caches.delete(k)))
-    }
-  } catch (e) {
-    console.warn('[SW/Login] Cleanup error (non-fatal):', e.message)
-  }
-}
 
 export default function Login() {
   const navigate = useNavigate()
@@ -45,10 +12,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
-
-  // Secondary SW cleanup — runs when Login mounts in case main.jsx's cleanup
-  // ran before a rogue SW had a chance to re-register (e.g. Spotify SDK HMR).
-  useEffect(() => { cleanupServiceWorkers() }, [])
 
   // Race any promise against a 10 s timeout — rejects with a typed error on timeout
   function withTimeout(promise, ms = 10_000) {

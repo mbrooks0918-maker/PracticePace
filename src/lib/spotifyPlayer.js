@@ -60,25 +60,20 @@ async function getFreshToken() {
   } catch { return null }
 }
 
-// ── Service-worker helpers ────────────────────────────────────────────────────
-
-/** Returns true only for Spotify-owned service workers. */
-function isSpotifySW(reg) {
-  const url   = (reg.scriptURL ?? '').toLowerCase()
-  const scope = (reg.scope     ?? '').toLowerCase()
-  return url.includes('spotify') || scope.includes('spotify')
-}
-
-// Called before injecting the SDK script so any stale Spotify SW is gone first.
+// ── Service-worker cleanup ────────────────────────────────────────────────────
+// Called before injecting the SDK script. At this point no Spotify SW should
+// be active yet (main.jsx removed stale ones at startup), so this is just a
+// belt-and-suspenders pass — any Spotify SW still lurking here is, by
+// definition, a leftover from a broken previous session and safe to remove.
 async function clearServiceWorkers() {
   if (!('serviceWorker' in navigator)) return
   try {
     const regs = await navigator.serviceWorker.getRegistrations()
     await Promise.all(
       regs
-        .filter(r => isSpotifySW(r))
+        .filter(r => (r.scriptURL ?? '').toLowerCase().includes('spotify'))
         .map(r => {
-          console.log('[SW] Unregistering Spotify SW before SDK load:', r.scope)
+          console.log('[SW] Unregistering stale Spotify SW before SDK load:', r.scope)
           return r.unregister()
         })
     )
@@ -119,26 +114,9 @@ function initPlayer() {
     transferPlayback(device_id, false).catch(() => {})
     emit('state', getSnapshot())
 
-    // Wait 5 s after ready before unregistering the Spotify SW.
-    // This gives the WebSocket audio stream time to fully establish.
-    // 5 s is safe because Supabase token refreshes happen every ~60 s,
-    // so there is no overlap with the brief window the SW is still active.
-    setTimeout(async () => {
-      if (!('serviceWorker' in navigator)) return
-      try {
-        const regs = await navigator.serviceWorker.getRegistrations()
-        await Promise.all(
-          regs
-            .filter(r => isSpotifySW(r))
-            .map(r => {
-              console.log('[SW] Unregistering Spotify SDK SW post-ready:', r.scope)
-              return r.unregister()
-            })
-        )
-      } catch (e) {
-        console.warn('[SW] Post-ready unregister error (non-fatal):', e.message)
-      }
-    }, 5000)
+    // Leave the Spotify SW running — it is required for audio playback.
+    // Cleanup happens via the beforeunload listener in main.jsx when the
+    // user closes/leaves the page, at which point audio has already stopped.
   })
 
   player.addListener('not_ready', ({ device_id }) => {

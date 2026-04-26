@@ -15,11 +15,16 @@ import App from './App.jsx'
 // Fix: run cleanup inside an async init() and only call createRoot() after
 // the awaits complete AND a 500ms settling delay has passed. React — and
 // therefore Supabase auth — never starts until the page is SW-free.
-/** Only target Spotify-owned service workers — leave any others untouched. */
-function isSpotifySW(reg) {
-  const url   = (reg.scriptURL ?? '').toLowerCase()
-  const scope = (reg.scope     ?? '').toLowerCase()
-  return url.includes('spotify') || scope.includes('spotify')
+// Only target Spotify SWs that are NOT yet activated — a 'redundant' or
+// 'installing' SW is a stale/broken leftover from a previous session and safe
+// to remove. An 'activated' SW means Spotify is actively using it right now;
+// killing it would break audio playback.
+function isStaleSpotifySW(reg) {
+  const sw  = reg.installing ?? reg.waiting ?? reg.active
+  const url = (reg.scriptURL ?? '').toLowerCase()
+  if (!url.includes('spotify')) return false
+  const state = sw?.state ?? ''
+  return state === 'redundant' || state === 'installing'
 }
 
 async function init() {
@@ -28,9 +33,9 @@ async function init() {
       const regs = await navigator.serviceWorker.getRegistrations()
       await Promise.all(
         regs
-          .filter(r => isSpotifySW(r))
+          .filter(r => isStaleSpotifySW(r))
           .map(r => {
-            console.log('[SW] Unregistering Spotify SW before React mount:', r.scope)
+            console.log('[SW] Unregistering stale Spotify SW before React mount:', r.scope, r.installing?.state ?? r.waiting?.state ?? r.active?.state)
             return r.unregister()
           })
       )
@@ -55,11 +60,12 @@ async function init() {
   await new Promise(resolve => setTimeout(resolve, 1000))
 
   // On page close, remove any Spotify SW that registered during this session
-  // so it can't intercept fetches on the next load.
+  // so it can't intercept fetches on the next load. beforeunload is safe
+  // because audio has already stopped when the user navigates away.
   window.addEventListener('beforeunload', () => {
     if (!('serviceWorker' in navigator)) return
     navigator.serviceWorker.getRegistrations()
-      .then(regs => regs.filter(r => isSpotifySW(r)).forEach(r => r.unregister()))
+      .then(regs => regs.filter(r => (r.scriptURL ?? '').toLowerCase().includes('spotify')).forEach(r => r.unregister()))
       .catch(() => {})
   })
 
