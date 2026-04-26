@@ -11,6 +11,7 @@ import Script from './pages/Script'
 import Scoreboard from './pages/Scoreboard'
 import Admin from './pages/Admin'
 import SpotifyCallback from './pages/SpotifyCallback'
+import AcceptInvite    from './pages/AcceptInvite'
 import { setupSpotifySDK, startPolling } from './lib/spotifyPlayer'
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/scoreboard"        element={<ProtectedRoute><Scoreboard /></ProtectedRoute>} />
             <Route path="/admin"             element={<ProtectedRoute><Admin /></ProtectedRoute>} />
             <Route path="/spotify/callback"  element={<SpotifyCallback />} />
+            <Route path="/invite"            element={<AcceptInvite />} />
           </Routes>
         </OrgProvider>
       </AuthProvider>

@@ -211,21 +211,34 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
     setInviting(true); setInviteMsg(''); setInviteErr(''); setCopied(false)
 
     try {
-      // Store invite record — fire-and-forget, graceful if table missing
-      await supabase.from('coach_invites').insert({
-        org_id: org.id,
-        email:  inviteEmail.trim(),
-        name:   inviteName.trim() || null,
-        role:   inviteRole,
-      }).then(() => {})
+      // Generate a cryptographically random token client-side so we can build
+      // the link immediately without a SELECT round-trip.
+      const token     = crypto.randomUUID()
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-      const params = new URLSearchParams({
-        invite: 'true',
-        org:    org.id,
-        role:   inviteRole,
-        email:  inviteEmail.trim(),
+      const { error } = await supabase.from('coach_invites').insert({
+        org_id:     org.id,
+        email:      inviteEmail.trim(),
+        name:       inviteName.trim() || null,
+        role:       inviteRole,
+        token,
+        expires_at: expiresAt,
+        created_at: new Date().toISOString(),
       })
-      const link = `${window.location.origin}/?${params.toString()}`
+
+      if (error) throw new Error(error.message)
+
+      const link = `https://practicepace.app/invite?token=${token}`
+
+      // Copy to clipboard immediately — don't wait for user to click "Copy"
+      try {
+        await navigator.clipboard.writeText(link)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 4000)
+      } catch {
+        // clipboard blocked (non-HTTPS / permissions) — still show the link
+      }
+
       setInviteMsg(link)
       setInviteEmail('')
       setInviteName('')
@@ -464,7 +477,9 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
               {inviteMsg && (
                 <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ backgroundColor: '#001a00', border: '1px solid #003300' }}>
                   <p className="text-xs font-semibold" style={{ color: '#66cc88' }}>
-                    ✓ Invite link ready — share with the coach:
+                    {copied
+                      ? '✓ Invite link copied to clipboard — share it with your coach'
+                      : '✓ Invite link ready — share with the coach:'}
                   </p>
                   <p className="text-xs break-all font-mono" style={{ color: '#9a9a9a' }}>{inviteMsg}</p>
                   <button
