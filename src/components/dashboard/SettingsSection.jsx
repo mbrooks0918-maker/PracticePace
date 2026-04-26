@@ -48,9 +48,8 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   const [inviteName, setInviteName]   = useState('')
   const [inviteRole, setInviteRole]   = useState('coach')
   const [inviting, setInviting]       = useState(false)
-  const [inviteMsg, setInviteMsg]     = useState('')
+  const [inviteSent, setInviteSent]   = useState('')   // success: shows the sent-to email
   const [inviteErr, setInviteErr]     = useState('')
-  const [copied, setCopied]           = useState(false)
 
   const [bgUploading, setBgUploading] = useState(false)
   const [bgError, setBgError]         = useState('')
@@ -208,53 +207,31 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
   async function handleInvite(e) {
     e.preventDefault()
     if (!inviteEmail.trim() || !org?.id) return
-    setInviting(true); setInviteMsg(''); setInviteErr(''); setCopied(false)
+    setInviting(true); setInviteSent(''); setInviteErr('')
 
     try {
-      // Generate a cryptographically random token client-side so we can build
-      // the link immediately without a SELECT round-trip.
-      const token     = crypto.randomUUID()
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-
-      const { error } = await supabase.from('coach_invites').insert({
-        org_id:     org.id,
-        email:      inviteEmail.trim(),
-        name:       inviteName.trim() || null,
-        role:       inviteRole,
-        token,
-        expires_at: expiresAt,
-        created_at: new Date().toISOString(),
+      const res = await fetch('/api/invite-coach', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          email:  inviteEmail.trim(),
+          name:   inviteName.trim() || null,
+          role:   inviteRole,
+          org_id: org.id,
+        }),
       })
 
-      if (error) throw new Error(error.message)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? `Server error (${res.status})`)
 
-      const link = `https://practicepace.app/invite?token=${token}`
-
-      // Copy to clipboard immediately — don't wait for user to click "Copy"
-      try {
-        await navigator.clipboard.writeText(link)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 4000)
-      } catch {
-        // clipboard blocked (non-HTTPS / permissions) — still show the link
-      }
-
-      setInviteMsg(link)
+      setInviteSent(inviteEmail.trim())
       setInviteEmail('')
       setInviteName('')
     } catch (err) {
-      setInviteErr(err.message ?? 'Could not generate invite.')
+      setInviteErr(err.message ?? 'Could not send invite.')
     } finally {
       setInviting(false)
     }
-  }
-
-  function copyInviteLink() {
-    if (!inviteMsg) return
-    navigator.clipboard?.writeText(inviteMsg).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2500)
-    })
   }
 
   function upd(key, val) { setForm(f => ({ ...f, [key]: val })) }
@@ -465,7 +442,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
                 className="py-3 rounded-lg text-sm font-bold text-white disabled:opacity-50"
                 style={{ backgroundColor: orgColor }}
               >
-                {inviting ? 'Generating…' : 'Generate Invite Link'}
+                {inviting ? 'Sending…' : 'Send Invite'}
               </button>
 
               {inviteErr && (
@@ -474,26 +451,14 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
                 </p>
               )}
 
-              {inviteMsg && (
-                <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ backgroundColor: '#001a00', border: '1px solid #003300' }}>
+              {inviteSent && (
+                <div className="p-3 rounded-lg" style={{ backgroundColor: '#001a00', border: '1px solid #003300' }}>
                   <p className="text-xs font-semibold" style={{ color: '#66cc88' }}>
-                    {copied
-                      ? '✓ Invite link copied to clipboard — share it with your coach'
-                      : '✓ Invite link ready — share with the coach:'}
+                    ✓ Invite sent to {inviteSent}
                   </p>
-                  <p className="text-xs break-all font-mono" style={{ color: '#9a9a9a' }}>{inviteMsg}</p>
-                  <button
-                    type="button"
-                    onClick={copyInviteLink}
-                    className="self-start px-4 py-2 rounded-lg text-xs font-bold transition-all"
-                    style={{
-                      backgroundColor: copied ? '#22c55e22' : `${orgColor}22`,
-                      border:          `1px solid ${copied ? '#22c55e' : orgColor}`,
-                      color:           copied ? '#22c55e' : orgColor,
-                    }}
-                  >
-                    {copied ? '✓ Copied!' : 'Copy Link'}
-                  </button>
+                  <p className="text-xs mt-1" style={{ color: '#9a9a9a' }}>
+                    They'll receive an email with a link to set their password and join your program.
+                  </p>
                 </div>
               )}
             </form>
