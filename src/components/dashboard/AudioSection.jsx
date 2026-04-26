@@ -158,10 +158,10 @@ function SpotifyPlayer() {
         {sdkFailed && (
           <div className="px-4 py-3 rounded-2xl" style={{ backgroundColor: '#1a0d00', border: '1px solid #3a2000' }}>
             <p className="text-sm font-semibold" style={{ color: '#ffaa00' }}>
-              In-app player unavailable — select an external device below
+              Select a Spotify device below to play music
             </p>
             <p className="text-xs mt-1" style={{ color: '#9a8080' }}>
-              Open Spotify on your phone or laptop to make it available.
+              Open Spotify on your phone or laptop, then tap Refresh to find it.
             </p>
           </div>
         )}
