@@ -8,7 +8,8 @@ import {
   disconnectPlayer, isConnected, startPolling,
 } from '../../lib/spotifyPlayer'
 
-const SPOTIFY_GREEN = '#1db954'
+const SPOTIFY_GREEN  = '#1db954'
+const PLAYLIST_KEY   = 'pp_spotify_playlist'
 
 function SpotifyLogo({ size = 24 }) {
   return (
@@ -23,7 +24,7 @@ function SpotifyLogo({ size = 24 }) {
 function SpotifyPlayer() {
   const [snap,          setSnap]          = useState(() => getSnapshot())
   const [playlists,     setPlaylists]     = useState([])
-  const [selectedUri,   setSelectedUri]   = useState('')
+  const [selectedUri,   setSelectedUri]   = useState(() => localStorage.getItem(PLAYLIST_KEY) ?? '')
   const [loadingLists,  setLoadingLists]  = useState(true)
   const [loadingDevs,   setLoadingDevs]   = useState(false)
   const [showDevPicker, setShowDevPicker] = useState(false)
@@ -77,11 +78,18 @@ function SpotifyPlayer() {
 
   async function handlePlaylistSelect(uri) {
     setSelectedUri(uri)
+    // Persist so the selection survives tab switches (AudioSection unmounts/remounts)
+    if (uri) localStorage.setItem(PLAYLIST_KEY, uri)
+    else     localStorage.removeItem(PLAYLIST_KEY)
     if (!uri) return
     try { await playTrack(uri); setError('') } catch (e) { setError(e.message) }
   }
 
-  function handleDisconnect() { disconnectPlayer(); window.location.reload() }
+  function handleDisconnect() {
+    localStorage.removeItem(PLAYLIST_KEY)
+    disconnectPlayer()
+    window.location.reload()
+  }
 
   const isReady = sdkReady || (!sdkLoading && !!deviceId)
 

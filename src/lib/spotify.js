@@ -153,15 +153,30 @@ async function api(path, options = {}) {
     },
   })
 
+  // 204 / 202 = success with no body (pause, skip, volume, transfer, etc.)
   if (res.status === 204 || res.status === 202) return null
+
+  // Read body as text first — Spotify occasionally returns plain-text on some
+  // 200s (e.g. "Success"), which breaks res.json() with "Unexpected token 'S'"
+  const raw = await res.text().catch(() => '')
+
   if (!res.ok) {
-    const raw = await res.text().catch(() => '')
     console.error('[Spotify] API error', res.status, path, raw)
     let msg = `Spotify API error ${res.status}`
     try { msg = JSON.parse(raw)?.error?.message ?? msg } catch {}
     throw new Error(msg)
   }
-  return res.json()
+
+  // Empty body on a 2xx — nothing to parse
+  if (!raw || raw.trim() === '') return null
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    // Non-JSON success response — log and return null rather than crashing
+    console.warn('[Spotify] Non-JSON response on', path, '—', raw.slice(0, 80))
+    return null
+  }
 }
 
 // ── Playback ──────────────────────────────────────────────────────────────────
