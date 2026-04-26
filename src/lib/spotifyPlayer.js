@@ -95,37 +95,46 @@ function initPlayer() {
 
   console.log('[Spotify] Initialising Web Playback SDK player')
 
+  // NOTE: do NOT pass unknown options — some SDK versions call
+  // validOptions.indexOf(key) and crash if the key is unrecognised.
   player = new window.Spotify.Player({
-    name:               'PracticePace',
-    getOAuthToken:      cb => getFreshToken().then(t => { if (t) cb(t) }),
-    volume:             volume / 100,
-    // Prevent the SDK from registering with the OS media session controls.
-    // Does not disable the service worker, but reduces the SDK's footprint.
-    enableMediaSession: false,
+    name:          'PracticePace',
+    getOAuthToken: cb => {
+      getFreshToken().then(t => {
+        if (t) {
+          cb(t)
+        } else {
+          console.warn('[Spotify] getOAuthToken: no valid token — callback not fired')
+        }
+      }).catch(err => {
+        console.error('[Spotify] getOAuthToken error:', err.message)
+      })
+    },
+    volume: volume / 100,
   })
 
-  player.addListener('ready', async ({ device_id }) => {
+  // NOTE: SDK listener callbacks must be synchronous. Returning a Promise
+  // (i.e. using async) causes the SDK's internal dispatcher to receive a
+  // Promise where it expects undefined, and it crashes with
+  // "Cannot read properties of undefined (reading 'indexOf')".
+  // Any async work is deferred into a setTimeout so the listener returns
+  // synchronously.
+
+  player.addListener('ready', ({ device_id }) => {
     console.log('[Spotify] Device ready:', device_id)
     deviceId  = device_id
     sdkReady  = true
     sdkFailed = false
-    localStorage.setItem(DEVICE_KEY, device_id)
+    localStorage.setItem(DEVICE_KEY, device_id ?? '')
     emit('state', getSnapshot())
 
-    // Wait 1 s for the SDK to fully initialise, then claim the device.
-    // Using true (start_playing) ensures Spotify treats this as the active
-    // device immediately and doesn't hand control back to another client.
-    await new Promise(r => setTimeout(r, 1000))
-    try {
-      await transferPlayback(device_id, true)
-      console.log('[Spotify] Transfer complete')
-    } catch (err) {
-      console.warn('[Spotify] Transfer error (non-fatal):', err.message)
-    }
-
-    // Leave the Spotify SW running — it is required for audio playback.
-    // Cleanup happens via the beforeunload listener in main.jsx when the
-    // user closes/leaves the page, at which point audio has already stopped.
+    // Defer async transfer so the listener returns synchronously.
+    // Wait 1 s first — the SDK needs a moment before accepting transfers.
+    setTimeout(() => {
+      transferPlayback(device_id, false)
+        .then(() => console.log('[Spotify] Transfer complete'))
+        .catch(err => console.warn('[Spotify] Transfer error (non-fatal):', err?.message))
+    }, 1000)
   })
 
   player.addListener('not_ready', ({ device_id }) => {
@@ -134,18 +143,18 @@ function initPlayer() {
     emit('state', getSnapshot())
   })
 
-  player.addListener('player_state_changed', async state => {
-    // null state means Spotify transferred playback away from this device.
-    // Re-claim it so the in-app player stays active.
+  // Synchronous listener — no async/await inside.
+  player.addListener('player_state_changed', state => {
     if (!state) {
-      console.warn('[Spotify] Player state null — playback left this device, re-claiming...')
+      // null state = Spotify transferred playback away from this device.
+      // Schedule a re-claim outside the listener so it returns synchronously.
+      console.warn('[Spotify] Player state null — scheduling re-claim')
       if (deviceId) {
-        try {
-          await transferPlayback(deviceId, true)
-          console.log('[Spotify] Re-claim transfer complete')
-        } catch (err) {
-          console.warn('[Spotify] Re-claim transfer error (non-fatal):', err.message)
-        }
+        setTimeout(() => {
+          transferPlayback(deviceId, true)
+            .then(() => console.log('[Spotify] Re-claim transfer complete'))
+            .catch(err => console.warn('[Spotify] Re-claim error (non-fatal):', err?.message))
+        }, 500)
       }
       return
     }
@@ -153,17 +162,23 @@ function initPlayer() {
     console.log('[Spotify] Player state:', {
       paused:   state.paused,
       position: state.position,
-      track:    state.track_window?.current_track?.name,
+      track:    state.track_window?.current_track?.name ?? null,
     })
     isPlaying = !state.paused
-    const track = state.track_window?.current_track
-    if (track) {
-      currentTrack = {
-        name:   track.name,
-        artist: track.artists?.map(a => a.name).join(', ') ?? '',
-        art:    track.album?.images?.[0]?.url ?? null,
+
+    try {
+      const track = state.track_window?.current_track
+      if (track?.name) {
+        currentTrack = {
+          name:   track.name,
+          artist: track.artists?.map(a => a?.name ?? '').join(', ') ?? '',
+          art:    track.album?.images?.[0]?.url ?? null,
+        }
       }
+    } catch (err) {
+      console.warn('[Spotify] Error reading track state (non-fatal):', err?.message)
     }
+
     emit('state', getSnapshot())
   })
 
@@ -192,7 +207,27 @@ function initPlayer() {
     emit('error', msg)
   })
 
+  player.addListener('playback_error', ({ message }) => {
+    console.error('[Spotify] SDK playback_error:', message)
+    emit('error', message)
+  })
+
   player.connect()
+}
+
+// Wrap initPlayer so any SDK constructor / addListener crash is caught and
+// logged rather than propagating up to crash the React component tree.
+function safeInitPlayer() {
+  try {
+    initPlayer()
+  } catch (err) {
+    console.error('[Spotify] initPlayer crashed:', err?.message, err)
+    sdkFailed  = true
+    sdkLoading = false
+    player     = null
+    emit('state', getSnapshot())
+    emit('error', 'Spotify player failed to initialise. Try refreshing the page.')
+  }
 }
 
 // ── SDK setup — call once when user has a valid token ─────────────────────────
@@ -212,20 +247,20 @@ export async function setupSpotifySDK() {
   // Step 2: if the SDK object is already on window (e.g. dev HMR), go straight to init
   if (window.Spotify) {
     sdkLoading = false
-    initPlayer()
+    safeInitPlayer()
     return
   }
 
   // Step 3: inject the script tag exactly once
   if (document.querySelector('script[src*="spotify-player"]')) {
     // Script tag exists but SDK not ready yet — callback will fire soon
-    window.onSpotifyWebPlaybackSDKReady = () => { sdkLoading = false; initPlayer() }
+    window.onSpotifyWebPlaybackSDKReady = () => { sdkLoading = false; safeInitPlayer() }
     return
   }
 
   window.onSpotifyWebPlaybackSDKReady = () => {
     sdkLoading = false
-    initPlayer()
+    safeInitPlayer()
   }
 
   const script   = document.createElement('script')
