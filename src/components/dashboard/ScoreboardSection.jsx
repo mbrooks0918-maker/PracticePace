@@ -141,22 +141,34 @@ function PlusMinusRow({ label, value, onChange, min = 0, max = 999 }) {
   )
 }
 
+// ── Shared amber colour for shot / play clocks ───────────────────────────────
+const SHOT_AMBER = '#f59e0b'
+
 // ── Football ──────────────────────────────────────────────────────────────────
 
 const QUARTERS = ['Q1','Q2','Q3','Q4','OT']
 const DOWNS    = ['1st','2nd','3rd','4th']
 
+// Football score buttons: TD / FG / Safety / 2-pt / PAT
+const FB_SCORES = [
+  { pts: 6, label: 'TD'    },
+  { pts: 3, label: 'FG'    },
+  { pts: 2, label: 'Safety'},
+  { pts: 2, label: '2-pt'  },
+  { pts: 1, label: 'PAT'   },
+]
+
 function FootballScoreboard({ orgColor }) {
-  const [home, setHome] = useState({ name: 'HOME', score: 0, timeouts: 3 })
-  const [away, setAway] = useState({ name: 'AWAY', score: 0, timeouts: 3 })
-  const [quarter, setQuarter]     = useState(0)
-  const [down, setDown]           = useState(0)
-  const [distance, setDistance]   = useState(10)
-  const [ballOn, setBallOn]       = useState(25)
-  const [gameSecs, setGameSecs]   = useState(15 * 60)
-  const [gameRun, setGameRun]     = useState(false)
-  const [playSecs, setPlaySecs]   = useState(40)
-  const [playRun, setPlayRun]     = useState(false)
+  const [home, setHome]             = useState({ name: 'HOME', score: 0, timeouts: 3 })
+  const [away, setAway]             = useState({ name: 'AWAY', score: 0, timeouts: 3 })
+  const [quarter, setQuarter]       = useState(0)
+  const [down, setDown]             = useState(0)
+  const [distance, setDistance]     = useState(10)
+  const [ballOn, setBallOn]         = useState(25)
+  const [gameSecs, setGameSecs]     = useState(15 * 60)
+  const [gameRun, setGameRun]       = useState(false)
+  const [playSecs, setPlaySecs]     = useState(40)
+  const [playRun, setPlayRun]       = useState(false)
   const [playPreset, setPlayPreset] = useState(40)
 
   useEffect(() => {
@@ -171,33 +183,47 @@ function FootballScoreboard({ orgColor }) {
     return () => clearInterval(id)
   }, [playRun])
 
-  function resetPlay(preset = playPreset) { setPlayRun(false); setPlaySecs(preset); setPlayPreset(preset) }
-  function score(setTeam, pts) { setTeam(t => ({ ...t, score: Math.max(0, t.score + pts) })) }
+  function resetPlay(p = playPreset) { setPlayRun(false); setPlaySecs(p); setPlayPreset(p) }
+  function addScore(setTeam, pts)    { setTeam(t => ({ ...t, score: Math.max(0, t.score + pts) })) }
 
   const ScoreButtons = ({ setTeam }) => (
-    <div className="flex flex-wrap gap-2 justify-center">
-      {[7, 6, 3, 2, 1].map(p => (
-        <button key={p} onClick={() => score(setTeam, p)}
-          className="w-12 h-12 rounded-xl text-sm font-black"
-          style={{ backgroundColor: `${orgColor}22`, border: `1px solid ${orgColor}`, color: orgColor }}>
-          +{p}
+    <div className="flex gap-1.5 w-full">
+      {FB_SCORES.map(({ pts, label }) => (
+        <button
+          key={label}
+          onClick={() => addScore(setTeam, pts)}
+          className="flex-1 flex flex-col items-center justify-center rounded-xl font-black py-2.5"
+          style={{
+            backgroundColor: `${orgColor}22`,
+            border:          `2px solid ${orgColor}`,
+            color:            orgColor,
+          }}
+        >
+          <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>+{pts}</span>
+          <span style={{ fontSize: '0.55rem', lineHeight: 1.5, color: `${orgColor}99` }}>{label}</span>
         </button>
       ))}
-      <button onClick={() => score(setTeam, -1)}
-        className="w-12 h-12 rounded-xl text-sm font-black"
-        style={{ backgroundColor: '#1a0000', border: '1px solid #3a0000', color: '#9a8080' }}>
+      <button
+        onClick={() => addScore(setTeam, -1)}
+        className="flex items-center justify-center rounded-xl font-bold px-2"
+        style={{ backgroundColor: '#1a0000', border: '1px solid #3a0000', color: '#6a4040', fontSize: '0.8rem' }}
+      >
         -1
       </button>
     </div>
   )
 
+  // Compact timeout dots — shown inside score panel header
   const TimeoutDots = ({ team, setTeam }) => (
-    <div className="flex items-center gap-2">
-      <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>TO</span>
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs" style={{ color: '#4a2020' }}>TO</span>
       {[0,1,2].map(i => (
         <button key={i}
-          onClick={() => setTeam(t => ({ ...t, timeouts: i < t.timeouts ? Math.max(0, t.timeouts - 1) : Math.min(3, t.timeouts + 1) }))}
-          className="w-5 h-5 rounded-full transition-all"
+          onClick={() => setTeam(t => ({
+            ...t,
+            timeouts: i < t.timeouts ? Math.max(0, t.timeouts - 1) : Math.min(3, t.timeouts + 1)
+          }))}
+          className="w-4 h-4 rounded-full transition-all"
           style={{ backgroundColor: i < team.timeouts ? orgColor : '#2a0000' }}
         />
       ))}
@@ -205,90 +231,185 @@ function FootballScoreboard({ orgColor }) {
   )
 
   return (
-    <div className="flex-1 flex flex-col gap-3 p-4 overflow-hidden min-h-0">
+    <div className="flex-1 flex flex-col gap-2 p-3 overflow-hidden min-h-0">
 
-      {/* Row 1: Game clock — centered at top */}
-      <div className="shrink-0 flex flex-col gap-3 rounded-2xl px-6 py-4"
-        style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+      {/* ── ROW 1: Quarter left | Game clock center | Play clock box right ── */}
+      <div className="shrink-0 flex gap-3 items-stretch">
 
-        {/* Clock — centered, full width */}
-        <div className="flex flex-col items-center gap-1">
-          <GameClock secs={gameSecs} warn={gameSecs <= 60} running={gameRun} onChange={setGameSecs} />
-          {!gameRun && (
-            <span className="text-xs" style={{ color: '#6a4040' }}>tap clock to set time</span>
-          )}
-        </div>
-
-        {/* Controls row: quarter left · presets center · Start/Reset right */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+        {/* Quarter selector — left */}
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl px-5 py-3 shrink-0"
+          style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+          <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Quarter</span>
           <select
             value={quarter}
             onChange={e => { setQuarter(Number(e.target.value)); setGameSecs(15*60); setGameRun(false) }}
-            className="rounded-xl px-4 py-3 text-sm font-bold outline-none shrink-0"
+            className="rounded-xl px-4 py-2.5 text-sm font-bold outline-none"
             style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}
           >
             {QUARTERS.map((l,i) => <option key={l} value={i}>{l}</option>)}
           </select>
+        </div>
 
-          <div className="flex items-center gap-2 flex-wrap justify-center flex-1">
-            <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Set Clock</span>
-            {[[15,0],[10,0],[5,0],[2,0],[1,0],[0,30]].map(([m,s]) => (
+        {/* Game clock — center, dominant */}
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 rounded-2xl px-4 py-3"
+          style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+          <GameClock secs={gameSecs} warn={gameSecs <= 60} running={gameRun} onChange={setGameSecs} />
+          {!gameRun && (
+            <span className="text-xs" style={{ color: '#6a4040' }}>tap to set time</span>
+          )}
+        </div>
+
+        {/* Play clock box — right, mirrors basketball shot clock */}
+        {(() => {
+          const playWarn = playSecs <= 5
+          return (
+            <div className="flex flex-col items-center justify-between rounded-2xl px-4 py-3 shrink-0"
+              style={{
+                backgroundColor: '#0d0800',
+                border: `2px solid ${playWarn ? '#ef4444' : SHOT_AMBER}44`,
+                boxShadow: playWarn ? '0 0 16px #ef444433' : `0 0 16px ${SHOT_AMBER}22`,
+                minWidth: 160,
+              }}>
+              {/* Label */}
+              <span className="text-xs font-bold uppercase tracking-widest"
+                style={{ color: playWarn ? '#ef4444' : `${SHOT_AMBER}99` }}>
+                Play Clock
+              </span>
+
+              {/* Large amber number */}
+              <div className="font-black font-mono leading-none"
+                style={{
+                  fontSize: 'clamp(3rem, 8vw, 4.5rem)',
+                  color: playWarn ? '#ef4444' : SHOT_AMBER,
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                {pad(playSecs)}
+              </div>
+
+              {/* +/- nudge */}
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setPlayRun(false); setPlaySecs(s => Math.max(0, s - 1)) }}
+                  className="w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center"
+                  style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}88` }}>−</button>
+                <button onClick={() => { setPlayRun(false); setPlaySecs(s => Math.min(60, s + 1)) }}
+                  className="w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center"
+                  style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}88` }}>+</button>
+              </div>
+
+              {/* Presets */}
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                {[40, 25].map(p => (
+                  <button key={p} onClick={() => resetPlay(p)}
+                    className="px-2 py-1 rounded-lg text-xs font-bold transition-all"
+                    style={{
+                      backgroundColor: playPreset === p ? `${SHOT_AMBER}22` : '#1a0d00',
+                      border:          `1px solid ${playPreset === p ? SHOT_AMBER : '#3a2000'}`,
+                      color:           playPreset === p ? SHOT_AMBER : `${SHOT_AMBER}55`,
+                    }}>
+                    {p}s
+                  </button>
+                ))}
+                <button onClick={() => resetPlay(playPreset)}
+                  className="px-2 py-1 rounded-lg text-xs font-bold"
+                  style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}55` }}>
+                  Rst
+                </button>
+              </div>
+
+              {/* Play/Pause */}
               <button
-                key={`${m}:${s}`}
-                onClick={() => { setGameRun(false); setGameSecs(m*60+s) }}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold"
-                style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#9a8080' }}
-              >
-                {m}:{pad(s)}
+                onClick={() => setPlayRun(r => !r)}
+                className="w-full py-2 rounded-xl text-sm font-bold"
+                style={{
+                  backgroundColor: playWarn ? '#ef444422' : `${SHOT_AMBER}22`,
+                  border: `1px solid ${playWarn ? '#ef4444' : SHOT_AMBER}`,
+                  color: playWarn ? '#ef4444' : SHOT_AMBER,
+                }}>
+                {playRun ? '⏸ Pause' : '▶ Start'}
               </button>
-            ))}
-          </div>
+            </div>
+          )
+        })()}
+      </div>
 
-          <div className="flex gap-2 shrink-0">
-            <button onClick={() => setGameRun(r => !r)}
-              className="px-8 py-3 rounded-xl text-sm font-bold text-white"
-              style={{ backgroundColor: orgColor }}>
-              {gameRun ? '⏸ Pause' : '▶ Start'}
+      {/* ── ROW 2: Game clock presets + Start/Reset ── */}
+      <div className="shrink-0 flex items-center gap-2 flex-wrap rounded-2xl px-5 py-2.5"
+        style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+        <span className="text-xs uppercase tracking-widest shrink-0" style={{ color: '#4a2020' }}>Set Clock</span>
+        <div className="flex gap-1.5 flex-wrap flex-1">
+          {[[15,0],[10,0],[5,0],[2,0],[1,0],[0,30]].map(([m,s]) => (
+            <button
+              key={`${m}:${s}`}
+              onClick={() => { setGameRun(false); setGameSecs(m*60+s) }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold"
+              style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#9a8080' }}
+            >
+              {m}:{pad(s)}
             </button>
-            <button onClick={() => { setGameRun(false); setGameSecs(15*60) }}
-              className="px-5 py-3 rounded-xl text-sm font-semibold"
-              style={{ border: '1px solid #2a0000', color: '#9a8080' }}>
-              Reset
-            </button>
-          </div>
+          ))}
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={() => setGameRun(r => !r)}
+            className="px-6 py-2 rounded-xl text-sm font-bold text-white"
+            style={{ backgroundColor: orgColor }}
+          >
+            {gameRun ? '⏸ Pause' : '▶ Start'}
+          </button>
+          <button
+            onClick={() => { setGameRun(false); setGameSecs(15*60) }}
+            className="px-4 py-2 rounded-xl text-sm font-semibold"
+            style={{ border: '1px solid #2a0000', color: '#9a8080' }}
+          >
+            Reset
+          </button>
         </div>
       </div>
 
-      {/* Row 2: Teams */}
+      {/* ── ROW 3: Score panels (flex-1) ── */}
       <div className="flex-1 flex gap-3 min-h-0">
-        {[[home, setHome, 'HOME'], [away, setAway, 'AWAY']].map(([team, setTeam, side], idx) => (
-          <div key={side} className="flex-1 flex flex-col items-center justify-around gap-3 rounded-2xl p-4"
+        {[['home', home, setHome], ['away', away, setAway]].map(([side, team, setTeam]) => (
+          <div key={side} className="flex-1 flex flex-col rounded-2xl p-4 overflow-hidden"
             style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
-            <input
-              value={team.name}
-              onChange={e => setTeam(t => ({ ...t, name: e.target.value }))}
-              className="text-center text-xs font-black uppercase tracking-widest rounded-xl px-3 py-2.5 w-full outline-none"
-              style={{ backgroundColor: 'transparent', border: '1px solid #2a0000', color: '#9a8080' }}
-              maxLength={20}
-            />
-            <div className="font-black text-white select-none"
-              style={{ fontSize: 'clamp(5rem, 16vw, 9rem)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-              {team.score}
+
+            {/* Team name + timeouts — top */}
+            <div className="flex items-center gap-2 shrink-0">
+              <input
+                value={team.name}
+                onChange={e => setTeam(t => ({ ...t, name: e.target.value }))}
+                className="flex-1 text-center text-xs font-black uppercase tracking-widest rounded-xl px-3 py-2 outline-none"
+                style={{ backgroundColor: 'transparent', border: '1px solid #2a0000', color: '#9a8080' }}
+                maxLength={20}
+              />
+              <TimeoutDots team={team} setTeam={setTeam} />
             </div>
-            <ScoreButtons setTeam={setTeam} />
-            <TimeoutDots team={team} setTeam={setTeam} />
+
+            {/* Score — flex-1 center */}
+            <div className="flex-1 flex items-center justify-center">
+              <div className="font-black text-white select-none"
+                style={{ fontSize: 'clamp(5rem,16vw,9rem)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                {team.score}
+              </div>
+            </div>
+
+            {/* Score buttons — pinned bottom */}
+            <div className="shrink-0">
+              <ScoreButtons setTeam={setTeam} />
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Row 3: Situation + play clock */}
-      <div className="shrink-0 flex items-center gap-4 flex-wrap rounded-2xl px-6 py-4"
+      {/* ── ROW 4: Situation stripe (Down / yds / Ball on) ── */}
+      <div className="shrink-0 flex items-center gap-3 flex-wrap rounded-2xl px-4 py-2.5"
         style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
-        <div className="flex items-center gap-2">
+
+        {/* Down buttons */}
+        <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Down</span>
           {DOWNS.map((d,i) => (
             <button key={d} onClick={() => setDown(i)}
-              className="w-12 h-10 rounded-lg text-xs font-bold transition-all"
+              className="w-11 h-9 rounded-lg text-xs font-bold transition-all"
               style={{
                 backgroundColor: down===i ? orgColor : '#1a0000',
                 border:          `1px solid ${down===i ? orgColor : '#2a0000'}`,
@@ -298,32 +419,11 @@ function FootballScoreboard({ orgColor }) {
             </button>
           ))}
         </div>
-        <PlusMinusRow label="& (yds)" value={distance} onChange={setDistance} min={1} max={99} />
-        <PlusMinusRow label="Ball on" value={ballOn}   onChange={setBallOn}   min={1} max={99} />
 
-        {/* Play clock */}
-        <div className="flex items-center gap-3 ml-auto flex-wrap">
-          <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Play Clock</span>
-          <AdjustableClock
-            secs={playSecs}
-            warn={playSecs <= 5}
-            onAdjust={d => { setPlayRun(false); setPlaySecs(s => Math.max(0, Math.min(60, s + d))) }}
-          />
-          <div className="flex gap-2">
-            {[40, 25].map(p => (
-              <Btn key={p} onClick={() => resetPlay(p)} active={playPreset===p} orgColor={orgColor} sm>{p}s</Btn>
-            ))}
-            <Btn onClick={() => resetPlay(playPreset)} sm>Reset</Btn>
-            <button
-              onClick={() => setPlayRun(r => !r)}
-              className="px-4 py-2 rounded-xl text-sm font-bold text-white"
-              style={{ backgroundColor: orgColor }}
-            >
-              {playRun ? '⏸' : '▶'}
-            </button>
-          </div>
-        </div>
+        <PlusMinusRow label="& yds" value={distance} onChange={setDistance} min={1} max={99} />
+        <PlusMinusRow label="Ball on" value={ballOn}  onChange={setBallOn}  min={1} max={99} />
       </div>
+
     </div>
   )
 }
@@ -332,8 +432,6 @@ function FootballScoreboard({ orgColor }) {
 
 const PERIODS_Q = ['Q1','Q2','Q3','Q4','OT']
 const PERIODS_H = ['H1','H2','OT']
-
-const SHOT_AMBER = '#f59e0b'
 
 function BasketballScoreboard({ orgColor }) {
   const [home, setHome] = useState({ name: 'HOME', score: 0, fouls: 0 })
