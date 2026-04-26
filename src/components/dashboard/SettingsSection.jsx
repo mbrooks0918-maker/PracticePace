@@ -303,6 +303,9 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
   const inputStyle = { backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }
 
+  // Debug — remove after confirming role is correct
+  console.log('[Settings] profile role:', profile?.role, '| id:', profile?.id)
+
   // ── Loading guard ────────────────────────────────────────────────────────────
   // Spin only while auth is actively loading. Once done, always show the form —
   // if org is null the user will fill in their details and we'll create it on Save.
@@ -438,8 +441,8 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
         {/* ── RIGHT COLUMN ── */}
         <div className="flex flex-col gap-5">
 
-          {/* Coaches & Staff — admin only */}
-          {profile?.role === 'admin' && (
+          {/* Coaches & Staff — admins and org owners (null role = pre-role-system owner) */}
+          {(profile?.role === 'admin' || !profile?.role) && (
             <Section title="Coaches & Staff">
               {/* ── Coach rows ── */}
               {coaches.length === 0 ? (
