@@ -1,6 +1,8 @@
-import { useState } from 'react'
-import { supabase } from '../lib/supabase'
-import Logo from '../components/Logo'
+import { useState, useEffect } from 'react'
+import { useNavigate }         from 'react-router-dom'
+import { supabase }            from '../lib/supabase'
+import { useAuth }             from '../context/AuthContext'
+import Logo    from '../components/Logo'
 import Tagline from '../components/Tagline'
 
 const SPORTS = [
@@ -352,6 +354,16 @@ function Step3({ accountType, form }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Onboarding() {
+  const navigate               = useNavigate()
+  const { profile, loading: authLoading } = useAuth()
+
+  // Invited coaches already have a profile — skip onboarding entirely
+  useEffect(() => {
+    if (!authLoading && profile) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [authLoading, profile])
+
   const [step, setStep] = useState(1)
   // Default to 'single' so there's always a valid plan even if user skips selection
   const [accountType, setAccountType] = useState('single')

@@ -139,7 +139,7 @@ export default function AcceptInvite() {
       }
 
       setDone(true)
-      setTimeout(() => navigate('/dashboard'), 1500)
+      setTimeout(() => navigate('/dashboard', { replace: true }), 1500)
     } catch (err) {
       setSubmitErr(err.message ?? 'Something went wrong. Please try again.')
     } finally {

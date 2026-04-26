@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth()
+  const { user, profile, loading } = useAuth()
+  const location = useLocation()
   // If AuthContext is somehow still loading after 6 s, stop waiting and redirect to login
   const [timedOut, setTimedOut] = useState(false)
 
@@ -27,6 +28,22 @@ export default function ProtectedRoute({ children }) {
     )
   }
 
+  // Not authenticated at all → login
   if (!user) return <Navigate to="/" replace />
+
+  // Anonymous / guest users never need a profile — let them through
+  if (user.is_anonymous) return children
+
+  // Authenticated user with a profile → go to dashboard if they try to hit /onboarding
+  if (profile && location.pathname === '/onboarding') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  // Authenticated user with NO profile → they need to complete onboarding
+  // (unless they're already heading there, which avoids an infinite redirect)
+  if (!profile && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />
+  }
+
   return children
 }
