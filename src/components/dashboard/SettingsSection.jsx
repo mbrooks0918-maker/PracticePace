@@ -14,13 +14,19 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
 const SPORTS = ['Football','Basketball','Volleyball','Baseball','Softball','Soccer','Track','Wrestling','Tennis','Other']
-const ROLES  = ['admin','coach','readonly']
+const ROLES  = ['owner','admin','coach','readonly']
 
 // Role badge colours
 const ROLE_STYLE = {
+  owner:    { bg: '#2a1a00', color: '#fbbf24', border: '#5a3a00' },
   admin:    { bg: '#3a0000', color: '#ff6666', border: '#6a0000' },
   coach:    { bg: '#001a2e', color: '#60a5fa', border: '#003a5e' },
   readonly: { bg: '#1a1a1a', color: '#9a9a9a', border: '#333333' },
+}
+
+// Roles that can manage coaches and send invites
+function canManageCoaches(role) {
+  return role === 'owner' || role === 'admin' || !role
 }
 function RoleBadge({ role }) {
   const s = ROLE_STYLE[role] ?? ROLE_STYLE.readonly
@@ -303,9 +309,6 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
 
   const inputStyle = { backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }
 
-  // Debug — remove after confirming role is correct
-  console.log('[Settings] profile role:', profile?.role, '| id:', profile?.id)
-
   // ── Loading guard ────────────────────────────────────────────────────────────
   // Spin only while auth is actively loading. Once done, always show the form —
   // if org is null the user will fill in their details and we'll create it on Save.
@@ -441,8 +444,8 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate })
         {/* ── RIGHT COLUMN ── */}
         <div className="flex flex-col gap-5">
 
-          {/* Coaches & Staff — admins and org owners (null role = pre-role-system owner) */}
-          {(profile?.role === 'admin' || !profile?.role) && (
+          {/* Coaches & Staff — owners, admins, and legacy accounts with no role */}
+          {canManageCoaches(profile?.role) && (
             <Section title="Coaches & Staff">
               {/* ── Coach rows ── */}
               {coaches.length === 0 ? (
