@@ -341,9 +341,9 @@ function BasketballScoreboard({ orgColor }) {
   const [possession, setPossession] = useState(null)
   const [gameSecs, setGameSecs]     = useState(10 * 60)
   const [gameRun, setGameRun]       = useState(false)
-  const [shotSecs, setShotSecs]     = useState(24)
+  const [shotSecs, setShotSecs]     = useState(35)
   const [shotRun, setShotRun]       = useState(false)
-  const [shotPreset, setShotPreset] = useState(24)
+  const [shotPreset, setShotPreset] = useState(35)
 
   const pLabels = periodType === 'halves' ? PERIODS_H : PERIODS_Q
   const pDur    = periodType === 'halves' ? 20 * 60  : 10 * 60
@@ -364,17 +364,34 @@ function BasketballScoreboard({ orgColor }) {
   function adj(setTeam, pts) { setTeam(t => ({ ...t, score: Math.max(0, t.score + pts) })) }
 
   const ScoreButtons = ({ setTeam }) => (
-    <div className="flex flex-wrap gap-2 justify-center">
-      {[3,2,1].map(p => (
-        <button key={p} onClick={() => adj(setTeam, p)}
-          className="w-14 h-12 rounded-xl text-sm font-black"
-          style={{ backgroundColor:`${orgColor}22`, border:`1px solid ${orgColor}`, color: orgColor }}>
-          +{p}
+    <div className="flex gap-2 justify-center">
+      {[
+        { pts: 1, label: 'Free\nThrow' },
+        { pts: 2, label: 'Basket' },
+        { pts: 3, label: 'Three' },
+      ].map(({ pts, label }) => (
+        <button
+          key={pts}
+          onClick={() => adj(setTeam, pts)}
+          className="flex flex-col items-center justify-center rounded-2xl font-black"
+          style={{
+            backgroundColor: `${orgColor}22`,
+            border:          `2px solid ${orgColor}`,
+            color:            orgColor,
+            width: 68, height: 76, gap: 2,
+          }}
+        >
+          <span style={{ fontSize: '1.35rem', lineHeight: 1 }}>+{pts}</span>
+          <span style={{ fontSize: '0.6rem', lineHeight: 1.2, color: `${orgColor}bb`, whiteSpace: 'pre', textAlign: 'center' }}>
+            {label}
+          </span>
         </button>
       ))}
-      <button onClick={() => adj(setTeam, -1)}
-        className="w-14 h-12 rounded-xl text-sm font-black"
-        style={{ backgroundColor:'#1a0000', border:'1px solid #3a0000', color:'#9a8080' }}>
+      <button
+        onClick={() => adj(setTeam, -1)}
+        className="flex items-center justify-center rounded-2xl font-black"
+        style={{ backgroundColor:'#1a0000', border:'2px solid #3a0000', color:'#6a4040', width: 48, height: 76, fontSize: '1.1rem' }}
+      >
         -1
       </button>
     </div>
@@ -497,7 +514,7 @@ function BasketballScoreboard({ orgColor }) {
           onAdjust={d => { setShotRun(false); setShotSecs(s => Math.max(0, Math.min(35, s + d))) }}
         />
         <div className="flex gap-2 ml-auto flex-wrap">
-          {[24, 14].map(p => (
+          {[35, 24, 14].map(p => (
             <Btn key={p} onClick={() => resetShot(p)} active={shotPreset===p} orgColor={orgColor} sm>{p}s</Btn>
           ))}
           <Btn onClick={() => resetShot(shotPreset)} sm>Reset</Btn>
