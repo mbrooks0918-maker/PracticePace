@@ -364,33 +364,31 @@ function BasketballScoreboard({ orgColor }) {
   function adj(setTeam, pts) { setTeam(t => ({ ...t, score: Math.max(0, t.score + pts) })) }
 
   const ScoreButtons = ({ setTeam }) => (
-    <div className="flex gap-2 justify-center">
+    <div className="flex gap-2 justify-center w-full">
       {[
-        { pts: 1, label: 'Free\nThrow' },
+        { pts: 1, label: 'Free Throw' },
         { pts: 2, label: 'Basket' },
         { pts: 3, label: 'Three' },
       ].map(({ pts, label }) => (
         <button
           key={pts}
           onClick={() => adj(setTeam, pts)}
-          className="flex flex-col items-center justify-center rounded-2xl font-black"
+          className="flex-1 flex flex-col items-center justify-center rounded-xl font-black py-2"
           style={{
             backgroundColor: `${orgColor}22`,
             border:          `2px solid ${orgColor}`,
             color:            orgColor,
-            width: 68, height: 76, gap: 2,
+            minHeight: 56,
           }}
         >
-          <span style={{ fontSize: '1.35rem', lineHeight: 1 }}>+{pts}</span>
-          <span style={{ fontSize: '0.6rem', lineHeight: 1.2, color: `${orgColor}bb`, whiteSpace: 'pre', textAlign: 'center' }}>
-            {label}
-          </span>
+          <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+{pts}</span>
+          <span style={{ fontSize: '0.6rem', lineHeight: 1.4, color: `${orgColor}99` }}>{label}</span>
         </button>
       ))}
       <button
         onClick={() => adj(setTeam, -1)}
-        className="flex items-center justify-center rounded-2xl font-black"
-        style={{ backgroundColor:'#1a0000', border:'2px solid #3a0000', color:'#6a4040', width: 48, height: 76, fontSize: '1.1rem' }}
+        className="flex items-center justify-center rounded-xl font-bold"
+        style={{ backgroundColor:'#1a0000', border:'1px solid #3a0000', color:'#6a4040', minHeight: 56, width: 40, fontSize: '0.9rem' }}
       >
         -1
       </button>
@@ -479,27 +477,41 @@ function BasketballScoreboard({ orgColor }) {
       {/* Row 2: Teams */}
       <div className="flex-1 flex gap-3 min-h-0">
         {[['home', home, setHome], ['away', away, setAway]].map(([side, team, setTeam]) => (
-          <div key={side} className="flex-1 flex flex-col items-center justify-around gap-3 rounded-2xl p-4"
+          <div key={side} className="flex-1 flex flex-col rounded-2xl p-4 overflow-hidden"
             style={{ backgroundColor:'#110000', border:'1px solid #2a0000' }}>
-            <input
-              value={team.name}
-              onChange={e => setTeam(t => ({ ...t, name: e.target.value }))}
-              className="text-center text-xs font-black uppercase tracking-widest rounded-xl px-3 py-2.5 w-full outline-none"
-              style={{ backgroundColor:'transparent', border:'1px solid #2a0000', color:'#9a8080' }}
-              maxLength={20}
-            />
-            <button
-              onClick={() => setPossession(p => p === side ? null : side)}
-              title="Possession"
-              className="w-4 h-4 rounded-full transition-all"
-              style={{ backgroundColor: possession === side ? orgColor : '#2a0000' }}
-            />
-            <div className="font-black text-white select-none"
-              style={{ fontSize:'clamp(5rem,16vw,9rem)', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>
-              {team.score}
+
+            {/* Team name + possession — pinned top */}
+            <div className="flex items-center gap-2 shrink-0">
+              <input
+                value={team.name}
+                onChange={e => setTeam(t => ({ ...t, name: e.target.value }))}
+                className="flex-1 text-center text-xs font-black uppercase tracking-widest rounded-xl px-3 py-2.5 outline-none"
+                style={{ backgroundColor:'transparent', border:'1px solid #2a0000', color:'#9a8080' }}
+                maxLength={20}
+              />
+              <button
+                onClick={() => setPossession(p => p === side ? null : side)}
+                title="Possession"
+                className="w-4 h-4 rounded-full shrink-0 transition-all"
+                style={{ backgroundColor: possession === side ? orgColor : '#2a0000' }}
+              />
             </div>
-            <ScoreButtons setTeam={setTeam} />
-            <FoulCounter team={team} setTeam={setTeam} />
+
+            {/* Score — takes all available middle space */}
+            <div className="flex-1 flex items-center justify-center">
+              <div className="font-black text-white select-none"
+                style={{ fontSize:'clamp(4.5rem,14vw,8rem)', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>
+                {team.score}
+              </div>
+            </div>
+
+            {/* Score buttons + foul counter — pinned bottom */}
+            <div className="flex flex-col gap-3 shrink-0">
+              <ScoreButtons setTeam={setTeam} />
+              <div className="flex justify-center">
+                <FoulCounter team={team} setTeam={setTeam} />
+              </div>
+            </div>
           </div>
         ))}
       </div>
