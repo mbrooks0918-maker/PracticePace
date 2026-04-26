@@ -38,10 +38,18 @@ async function init() {
     } catch {}
   }
 
-  // Give the browser a full 500 ms to finish processing the unregistrations
+  // Give the browser a full 1000 ms to finish processing the unregistrations
   // before any fetch() calls are made. Without this gap the browser may still
   // route requests through the SW that was just told to unregister.
-  await new Promise(resolve => setTimeout(resolve, 500))
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  // Nuke any SW that sneaks back after page unload (e.g. Spotify SDK re-register)
+  window.addEventListener('beforeunload', () => {
+    if (!('serviceWorker' in navigator)) return
+    navigator.serviceWorker.getRegistrations()
+      .then(regs => regs.forEach(r => r.unregister()))
+      .catch(() => {})
+  })
 
   createRoot(document.getElementById('root')).render(
     <StrictMode>

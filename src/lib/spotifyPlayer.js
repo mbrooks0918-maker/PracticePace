@@ -107,11 +107,12 @@ function initPlayer() {
     transferPlayback(device_id, false).catch(() => {})
     emit('state', getSnapshot())
 
-    // The SDK has registered a Service Worker. The WebSocket / audio stream
-    // is now open, so the SW is no longer needed for this session.
-    // Unregistering it 2 s after ready prevents it from intercepting future
-    // fetch() calls (e.g. Supabase token refreshes) while keeping audio alive.
-    setTimeout(async () => {
+    // The WebSocket / audio stream is now established — unregister the Spotify
+    // SW immediately. device_id, sdkReady, and all module-level state are
+    // already stored above, so the SW is no longer needed this session.
+    // Audio playback continues via the open WebSocket; unregistering the SW
+    // only prevents it from intercepting future fetch() calls.
+    ;(async () => {
       if (!('serviceWorker' in navigator)) return
       try {
         const regs = await navigator.serviceWorker.getRegistrations()
@@ -119,10 +120,15 @@ function initPlayer() {
           console.log('[SW] Unregistering Spotify SDK SW post-ready:', r.scope)
           return r.unregister()
         }))
+        // Clear caches left behind by the Spotify SW
+        if ('caches' in window) {
+          const keys = await caches.keys()
+          await Promise.all(keys.map(k => caches.delete(k)))
+        }
       } catch (e) {
         console.warn('[SW] Post-ready unregister error (non-fatal):', e.message)
       }
-    }, 2000)
+    })()
   })
 
   player.addListener('not_ready', ({ device_id }) => {
