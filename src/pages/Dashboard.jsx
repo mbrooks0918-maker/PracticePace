@@ -9,6 +9,11 @@ import {
   getSnapshot as getSpotifySnapshot,
   pauseTrack, playTrack, isConnected as spotifyIsConnected,
 } from '../lib/spotifyPlayer'
+import {
+  subscribe as subscribeAudio,
+  getSnapshot as getAudioSnapshot,
+  togglePlay as audioTogglePlay,
+} from '../lib/audioPlayer'
 
 import PracticeSection   from '../components/dashboard/PracticeSection'
 import ScriptsSection    from '../components/dashboard/ScriptsSection'
@@ -80,7 +85,19 @@ export default function Dashboard() {
       if (type === 'state') setSpotifySnap({ ...payload })
     })
   }, [])
-  const showMiniPlayer = spotifyIsConnected() && spotifySnap.currentTrack !== null
+
+  // ── MP3 mini player state ──────────────────────────────────────────────────
+  const [audioSnap, setAudioSnap] = useState(() => getAudioSnapshot())
+  useEffect(() => {
+    return subscribeAudio((type, payload) => {
+      if (type === 'state') setAudioSnap({ ...payload })
+    })
+  }, [])
+
+  // MP3 mini player takes priority; Spotify shows only when MP3 has nothing loaded
+  const showMp3Mini     = !!(audioSnap.song && audioSnap.isPlaying)
+  const showSpotifyMini = !showMp3Mini && spotifyIsConnected() && spotifySnap.currentTrack !== null
+  const showMiniPlayer  = showMp3Mini || showSpotifyMini
 
   const orgColor = org?.primary_color ?? '#cc1111'
 
@@ -321,8 +338,56 @@ export default function Dashboard() {
         </main>
       </div>
 
-      {/* ── Spotify mini player (shown on all tabs when track is loaded) ── */}
+      {/* ── Mini player (MP3 takes priority over Spotify) ── */}
       {showMiniPlayer && (() => {
+        // ── MP3 mini player ──
+        if (showMp3Mini) {
+          const { song, isPlaying } = audioSnap
+          return (
+            <div
+              className="fixed left-0 right-0 flex items-center gap-3 px-4"
+              style={{
+                bottom: 68, height: 52, zIndex: 19,
+                backgroundColor: '#0d0800',
+                borderTop: `1px solid ${orgColor}33`,
+                backdropFilter: 'blur(8px)',
+              }}
+            >
+              {/* Music note icon */}
+              <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center"
+                style={{ backgroundColor: `${orgColor}22` }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={orgColor} strokeWidth="2" strokeLinecap="round">
+                  <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+                </svg>
+              </div>
+
+              {/* Track info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-white truncate leading-tight">{song?.name ?? ''}</p>
+                <p className="text-xs leading-tight" style={{ color: '#9a8080' }}>MP3 Player</p>
+              </div>
+
+              {/* Play / Pause */}
+              <button
+                onClick={() => audioTogglePlay().catch(() => {})}
+                className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
+                style={{ backgroundColor: orgColor, boxShadow: `0 0 12px ${orgColor}66` }}
+              >
+                {isPlaying ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                    <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white" style={{ marginLeft: 2 }}>
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                )}
+              </button>
+            </div>
+          )
+        }
+
+        // ── Spotify mini player ──
         const { currentTrack, isPlaying } = spotifySnap
         return (
           <div
@@ -331,11 +396,9 @@ export default function Dashboard() {
               bottom: 68, height: 52, zIndex: 19,
               backgroundColor: '#0a1a0a',
               borderTop: '1px solid #1db95433',
-              borderBottom: '1px solid #0a1a0a',
               backdropFilter: 'blur(8px)',
             }}
           >
-            {/* Album art */}
             <div className="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden"
               style={{ backgroundColor: '#1a2a1a' }}>
               {currentTrack?.art
@@ -343,32 +406,18 @@ export default function Dashboard() {
                 : <div className="w-full h-full" style={{ backgroundColor: '#1a2a1a' }} />
               }
             </div>
-
-            {/* Track info */}
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-white truncate leading-tight">
-                {currentTrack?.name ?? ''}
-              </p>
-              <p className="text-xs truncate leading-tight" style={{ color: '#9a8080' }}>
-                {currentTrack?.artist ?? ''}
-              </p>
+              <p className="text-xs font-bold text-white truncate leading-tight">{currentTrack?.name ?? ''}</p>
+              <p className="text-xs truncate leading-tight" style={{ color: '#9a8080' }}>{currentTrack?.artist ?? ''}</p>
             </div>
-
-            {/* Play / Pause */}
             <button
-              onClick={async () => {
-                try {
-                  if (isPlaying) await pauseTrack()
-                  else           await playTrack()
-                } catch {}
-              }}
+              onClick={async () => { try { if (isPlaying) await pauseTrack(); else await playTrack() } catch {} }}
               className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
               style={{ backgroundColor: '#1db954', boxShadow: '0 0 12px #1db95466' }}
             >
               {isPlaying ? (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
-                  <rect x="6" y="4" width="4" height="16" rx="1"/>
-                  <rect x="14" y="4" width="4" height="16" rx="1"/>
+                  <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
                 </svg>
               ) : (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="white" style={{ marginLeft: 2 }}>
