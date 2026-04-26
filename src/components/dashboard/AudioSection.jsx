@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react'
 import { getAuthUrl, getPlaylists } from '../../lib/spotify'
 import {
   subscribe as subscribeSpotify,
-  getSnapshot, refreshDevices, selectDevice,
+  getSnapshot, setupSpotifySDK,
+  refreshDevices, selectDevice,
   playTrack, pauseTrack, nextTrack, prevTrack, setVol,
   disconnectPlayer, isConnected, startPolling,
 } from '../../lib/spotifyPlayer'
 
 const SPOTIFY_GREEN = '#1db954'
 
-// ── Spotify logo SVG ──────────────────────────────────────────────────────────
 function SpotifyLogo({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={SPOTIFY_GREEN}>
@@ -19,20 +19,21 @@ function SpotifyLogo({ size = 24 }) {
   )
 }
 
-// ── Connected player ──────────────────────────────────────────────────────────
+// ── Connected player (SDK ready OR external device selected) ──────────────────
 function SpotifyPlayer() {
-  const [snap,         setSnap]         = useState(() => getSnapshot())
-  const [playlists,    setPlaylists]    = useState([])
-  const [selectedUri,  setSelectedUri]  = useState('')
-  const [loadingLists, setLoadingLists] = useState(true)
-  const [loadingDevs,  setLoadingDevs]  = useState(false)
-  const [error,        setError]        = useState('')
+  const [snap,          setSnap]          = useState(() => getSnapshot())
+  const [playlists,     setPlaylists]     = useState([])
+  const [selectedUri,   setSelectedUri]   = useState('')
+  const [loadingLists,  setLoadingLists]  = useState(true)
+  const [loadingDevs,   setLoadingDevs]   = useState(false)
+  const [showDevPicker, setShowDevPicker] = useState(false)
+  const [error,         setError]         = useState('')
 
-  const { deviceId, devices, isPlaying, currentTrack } = snap
-  const selectedDevice = devices.find(d => d.id === deviceId) ?? null
+  const { sdkReady, sdkFailed, sdkLoading, deviceId, devices, isPlaying, currentTrack } = snap
 
-  // Subscribe to state changes and start polling
+  // Subscribe to state + kick off SDK + polling on mount
   useEffect(() => {
+    setupSpotifySDK().catch(() => {})
     startPolling()
     const unsub = subscribeSpotify((type, payload) => {
       if (type === 'state') setSnap({ ...payload })
@@ -41,32 +42,38 @@ function SpotifyPlayer() {
     return unsub
   }, [])
 
-  // Load devices + playlists on mount
+  // Load playlists once
   useEffect(() => {
-    handleRefreshDevices()
     getPlaylists()
       .then(list => { setPlaylists(list); setLoadingLists(false) })
       .catch(e   => { setError(e.message); setLoadingLists(false) })
   }, [])
 
+  // When SDK fails auto-open device picker and refresh
+  useEffect(() => {
+    if (sdkFailed) {
+      setShowDevPicker(true)
+      handleRefreshDevices()
+    }
+  }, [sdkFailed])
+
   async function handleRefreshDevices() {
     setLoadingDevs(true)
-    setError('')
     try { await refreshDevices() } catch (e) { setError(e.message) }
     finally { setLoadingDevs(false) }
   }
 
   async function handlePlayPause() {
     try {
-      if (isPlaying) { await pauseTrack() }
-      else           { await playTrack(selectedUri || undefined) }
+      if (isPlaying) await pauseTrack()
+      else           await playTrack(selectedUri || undefined)
       setError('')
     } catch (e) { setError(e.message) }
   }
 
-  async function handleNext()     { try { await nextTrack(); setError('') } catch (e) { setError(e.message) } }
-  async function handlePrevious() { try { await prevTrack(); setError('') } catch (e) { setError(e.message) } }
-  async function handleVolume(v)  { try { await setVol(v) }  catch { /* ignore */ } }
+  async function handleNext()    { try { await nextTrack(); setError('') } catch (e) { setError(e.message) } }
+  async function handlePrev()    { try { await prevTrack(); setError('') } catch (e) { setError(e.message) } }
+  async function handleVol(v)    { try { await setVol(v) } catch { /* ignore */ } }
 
   async function handlePlaylistSelect(uri) {
     setSelectedUri(uri)
@@ -74,10 +81,9 @@ function SpotifyPlayer() {
     try { await playTrack(uri); setError('') } catch (e) { setError(e.message) }
   }
 
-  function handleDisconnect() {
-    disconnectPlayer()
-    window.location.reload()
-  }
+  function handleDisconnect() { disconnectPlayer(); window.location.reload() }
+
+  const isReady = sdkReady || (!sdkLoading && !!deviceId)
 
   return (
     <div className="flex-1 overflow-y-auto p-5 md:p-8">
@@ -95,73 +101,97 @@ function SpotifyPlayer() {
           </span>
         </div>
 
-        {/* ── Device picker ── */}
-        <div className="flex flex-col gap-3 p-5 rounded-3xl"
-          style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}33` }}>
+        {/* ── SDK status / device picker toggle ── */}
+        {sdkLoading && !sdkFailed && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+            style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}33` }}>
+            <div className="w-4 h-4 rounded-full border-2 animate-spin flex-shrink-0"
+              style={{ borderColor: SPOTIFY_GREEN, borderTopColor: 'transparent' }} />
+            <div>
+              <p className="text-sm font-semibold" style={{ color: SPOTIFY_GREEN }}>Starting PracticePace player…</p>
+              <p className="text-xs mt-0.5" style={{ color: '#9a8080' }}>iPad will become a Spotify device</p>
+            </div>
+          </div>
+        )}
 
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#9a8080' }}>
-              Active Device
-            </p>
+        {sdkReady && (
+          <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
+            style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}33` }}>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: SPOTIFY_GREEN }} />
+              <p className="text-sm font-semibold" style={{ color: SPOTIFY_GREEN }}>PracticePace player ready</p>
+            </div>
             <button
-              onClick={handleRefreshDevices}
-              disabled={loadingDevs}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-opacity disabled:opacity-50"
-              style={{ backgroundColor: '#1a2a1a', color: SPOTIFY_GREEN }}
-            >
-              {loadingDevs ? (
-                <div className="w-3 h-3 rounded-full border border-current animate-spin"
-                  style={{ borderTopColor: 'transparent' }} />
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <polyline points="23 4 23 10 17 10"/>
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
-              )}
-              Refresh
+              onClick={() => { setShowDevPicker(v => !v); if (!showDevPicker) handleRefreshDevices() }}
+              className="text-xs underline" style={{ color: '#9a8080' }}>
+              {showDevPicker ? 'Hide devices' : 'Use external device'}
             </button>
           </div>
+        )}
 
-          {devices.length === 0 ? (
-            <div className="flex flex-col gap-2 py-2">
-              <p className="text-sm" style={{ color: '#9a8080' }}>
-                No devices found — open Spotify on your phone or laptop, then tap Refresh.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {devices.map(device => (
-                <button
-                  key={device.id}
-                  onClick={() => selectDevice(device.id)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all"
-                  style={{
-                    backgroundColor: device.id === deviceId ? '#1a3a1a' : '#0a1a0a',
-                    border: `1px solid ${device.id === deviceId ? SPOTIFY_GREEN : SPOTIFY_GREEN + '22'}`,
-                  }}
-                >
-                  <div className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: device.id === deviceId ? SPOTIFY_GREEN : '#4a4a4a' }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{device.name}</p>
-                    <p className="text-xs truncate" style={{ color: '#9a8080' }}>{device.type}</p>
-                  </div>
-                  {device.id === deviceId && (
-                    <span className="text-xs font-bold flex-shrink-0" style={{ color: SPOTIFY_GREEN }}>Selected</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {!deviceId && devices.length > 0 && (
-            <p className="text-xs" style={{ color: '#9a8040' }}>
-              Tap a device above to control it from PracticePace.
+        {sdkFailed && (
+          <div className="px-4 py-3 rounded-2xl" style={{ backgroundColor: '#1a0d00', border: '1px solid #3a2000' }}>
+            <p className="text-sm font-semibold" style={{ color: '#ffaa00' }}>
+              In-app player unavailable — select an external device below
             </p>
-          )}
-        </div>
+            <p className="text-xs mt-1" style={{ color: '#9a8080' }}>
+              Open Spotify on your phone or laptop to make it available.
+            </p>
+          </div>
+        )}
 
-        {/* ── Now playing card ── */}
+        {/* ── Device picker (shown when SDK failed or user requests it) ── */}
+        {(showDevPicker || sdkFailed) && (
+          <div className="flex flex-col gap-3 p-5 rounded-3xl"
+            style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}33` }}>
+
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#9a8080' }}>
+                External Devices
+              </p>
+              <button
+                onClick={handleRefreshDevices}
+                disabled={loadingDevs}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-opacity disabled:opacity-50"
+                style={{ backgroundColor: '#1a2a1a', color: SPOTIFY_GREEN }}>
+                {loadingDevs
+                  ? <div className="w-3 h-3 rounded-full border border-current animate-spin" style={{ borderTopColor: 'transparent' }} />
+                  : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <polyline points="23 4 23 10 17 10"/>
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                }
+                Refresh
+              </button>
+            </div>
+
+            {devices.length === 0
+              ? <p className="text-sm" style={{ color: '#9a8080' }}>
+                  No devices found — open Spotify on your phone or laptop, then tap Refresh.
+                </p>
+              : devices.map(device => (
+                  <button key={device.id} onClick={() => selectDevice(device.id)}
+                    className="flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all"
+                    style={{
+                      backgroundColor: device.id === deviceId ? '#1a3a1a' : '#0a1a0a',
+                      border: `1px solid ${device.id === deviceId ? SPOTIFY_GREEN : SPOTIFY_GREEN + '22'}`,
+                    }}>
+                    <div className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: device.id === deviceId ? SPOTIFY_GREEN : '#4a4a4a' }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{device.name}</p>
+                      <p className="text-xs truncate" style={{ color: '#9a8080' }}>{device.type}</p>
+                    </div>
+                    {device.id === deviceId && (
+                      <span className="text-xs font-bold flex-shrink-0" style={{ color: SPOTIFY_GREEN }}>Selected</span>
+                    )}
+                  </button>
+                ))
+            }
+          </div>
+        )}
+
+        {/* ── Now playing ── */}
         <div className="flex items-center gap-5 p-5 rounded-3xl"
           style={{ backgroundColor: '#0d1a0d', border: `1px solid ${SPOTIFY_GREEN}33` }}>
           <div className="w-20 h-20 rounded-2xl flex-shrink-0 flex items-center justify-center overflow-hidden"
@@ -169,27 +199,25 @@ function SpotifyPlayer() {
             {currentTrack?.art
               ? <img src={currentTrack.art} alt="Album art" className="w-full h-full object-cover" />
               : <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1db95455" strokeWidth="1.5">
-                  <circle cx="12" cy="12" r="10"/>
-                  <circle cx="12" cy="12" r="3"/>
-                  <line x1="12" y1="2" x2="12" y2="6"/>
-                  <line x1="12" y1="18" x2="12" y2="22"/>
-                  <line x1="2" y1="12" x2="6" y2="12"/>
-                  <line x1="18" y1="12" x2="22" y2="12"/>
+                  <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+                  <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+                  <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
                 </svg>
             }
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-white text-base truncate">
-              {currentTrack?.name ?? (deviceId ? 'Nothing playing' : 'No device selected')}
+              {currentTrack?.name ?? (sdkLoading ? 'Waiting for player…' : 'Nothing playing')}
             </p>
             <p className="text-sm truncate mt-1" style={{ color: '#9a8080' }}>
-              {currentTrack?.artist ?? (selectedDevice ? selectedDevice.name : '—')}
+              {currentTrack?.artist ?? '—'}
             </p>
-            {deviceId && (
+            {isReady && (
               <div className="flex items-center gap-1.5 mt-2">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: SPOTIFY_GREEN }} />
-                <span className="text-xs font-semibold" style={{ color: SPOTIFY_GREEN }}>
-                  {isPlaying ? 'Playing' : 'Paused'}
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isPlaying ? SPOTIFY_GREEN : '#4a4a00' }} />
+                <span className="text-xs font-semibold"
+                  style={{ color: isPlaying ? SPOTIFY_GREEN : '#9a8040' }}>
+                  {isPlaying ? 'Playing' : 'Ready'}
                 </span>
               </div>
             )}
@@ -198,7 +226,7 @@ function SpotifyPlayer() {
 
         {/* ── Transport controls ── */}
         <div className="flex items-center justify-center gap-6">
-          <button onClick={handlePrevious} disabled={!deviceId}
+          <button onClick={handlePrev} disabled={!isReady}
             className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-30"
             style={{ backgroundColor: '#1a2a1a', color: '#fff' }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -207,22 +235,21 @@ function SpotifyPlayer() {
             </svg>
           </button>
 
-          <button onClick={handlePlayPause} disabled={!deviceId}
+          <button onClick={handlePlayPause} disabled={!isReady}
             className="w-20 h-20 rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-30"
             style={{ backgroundColor: SPOTIFY_GREEN, boxShadow: `0 0 36px ${SPOTIFY_GREEN}55` }}>
-            {isPlaying ? (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
-                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                <rect x="14" y="4" width="4" height="16" rx="1"/>
-              </svg>
-            ) : (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="white" style={{ marginLeft: 4 }}>
-                <polygon points="5 3 19 12 5 21 5 3"/>
-              </svg>
-            )}
+            {isPlaying
+              ? <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+                  <rect x="6" y="4" width="4" height="16" rx="1"/>
+                  <rect x="14" y="4" width="4" height="16" rx="1"/>
+                </svg>
+              : <svg width="28" height="28" viewBox="0 0 24 24" fill="white" style={{ marginLeft: 4 }}>
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+            }
           </button>
 
-          <button onClick={handleNext} disabled={!deviceId}
+          <button onClick={handleNext} disabled={!isReady}
             className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-30"
             style={{ backgroundColor: '#1a2a1a', color: '#fff' }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -238,7 +265,7 @@ function SpotifyPlayer() {
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
           </svg>
           <input type="range" min={0} max={100} value={snap.volume}
-            onChange={e => handleVolume(Number(e.target.value))}
+            onChange={e => handleVol(Number(e.target.value))}
             className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
             style={{
               background: `linear-gradient(to right, ${SPOTIFY_GREEN} ${snap.volume}%, #2a1a1a ${snap.volume}%)`,
@@ -257,23 +284,22 @@ function SpotifyPlayer() {
           <label className="text-xs font-bold uppercase tracking-widest" style={{ color: '#9a8080' }}>
             Play a Playlist
           </label>
-          {loadingLists ? (
-            <div className="flex items-center gap-2 py-3">
-              <div className="w-4 h-4 rounded-full border-2 animate-spin"
-                style={{ borderColor: SPOTIFY_GREEN, borderTopColor: 'transparent' }} />
-              <p className="text-sm" style={{ color: '#9a8080' }}>Loading playlists…</p>
-            </div>
-          ) : (
-            <select value={selectedUri} onChange={e => handlePlaylistSelect(e.target.value)}
-              disabled={!deviceId}
-              className="rounded-2xl px-5 py-4 text-sm font-semibold outline-none disabled:opacity-40"
-              style={{ backgroundColor: '#110000', border: `1px solid ${SPOTIFY_GREEN}33`, color: '#fff' }}>
-              <option value="">— Choose a playlist —</option>
-              {playlists.map(p => (
-                <option key={p.id} value={p.uri}>{p.name}</option>
-              ))}
-            </select>
-          )}
+          {loadingLists
+            ? <div className="flex items-center gap-2 py-3">
+                <div className="w-4 h-4 rounded-full border-2 animate-spin"
+                  style={{ borderColor: SPOTIFY_GREEN, borderTopColor: 'transparent' }} />
+                <p className="text-sm" style={{ color: '#9a8080' }}>Loading playlists…</p>
+              </div>
+            : <select value={selectedUri} onChange={e => handlePlaylistSelect(e.target.value)}
+                disabled={!isReady}
+                className="rounded-2xl px-5 py-4 text-sm font-semibold outline-none disabled:opacity-40"
+                style={{ backgroundColor: '#110000', border: `1px solid ${SPOTIFY_GREEN}33`, color: '#fff' }}>
+                <option value="">— Choose a playlist —</option>
+                {playlists.map(p => (
+                  <option key={p.id} value={p.uri}>{p.name}</option>
+                ))}
+              </select>
+          }
         </div>
 
         {/* ── Error ── */}
@@ -297,7 +323,7 @@ function SpotifyPlayer() {
   )
 }
 
-// ── Not connected screen ──────────────────────────────────────────────────────
+// ── Not connected ─────────────────────────────────────────────────────────────
 function ConnectScreen() {
   const [connecting, setConnecting] = useState(false)
 
@@ -321,31 +347,24 @@ function ConnectScreen() {
         <div className="flex flex-col gap-3">
           <h2 className="font-black text-white text-2xl">Connect Spotify</h2>
           <p className="text-sm leading-relaxed" style={{ color: '#9a8080' }}>
-            Control your music during practice without leaving the app. Open Spotify on your phone or laptop, then PracticePace controls it remotely — play playlists, skip tracks, adjust volume.
+            Play music directly through your iPad during practice. Control playlists, skip tracks, and adjust volume — all without leaving the app.
           </p>
           <p className="text-xs font-semibold mt-1" style={{ color: '#6a4040' }}>
             Requires Spotify Premium
           </p>
         </div>
 
-        <button
-          onClick={handleConnect}
-          disabled={connecting}
+        <button onClick={handleConnect} disabled={connecting}
           className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-base font-bold text-white transition-all disabled:opacity-60 active:scale-95"
-          style={{ backgroundColor: SPOTIFY_GREEN, boxShadow: `0 0 32px ${SPOTIFY_GREEN}44` }}
-        >
-          {connecting ? (
-            <>
-              <div className="w-5 h-5 rounded-full border-2 animate-spin"
-                style={{ borderColor: '#fff', borderTopColor: 'transparent' }} />
-              Redirecting to Spotify…
-            </>
-          ) : (
-            <>
-              <SpotifyLogo size={22} />
-              Connect Spotify
-            </>
-          )}
+          style={{ backgroundColor: SPOTIFY_GREEN, boxShadow: `0 0 32px ${SPOTIFY_GREEN}44` }}>
+          {connecting
+            ? <>
+                <div className="w-5 h-5 rounded-full border-2 animate-spin"
+                  style={{ borderColor: '#fff', borderTopColor: 'transparent' }} />
+                Redirecting to Spotify…
+              </>
+            : <><SpotifyLogo size={22} />Connect Spotify</>
+          }
         </button>
 
       </div>

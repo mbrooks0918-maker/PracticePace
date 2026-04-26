@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { OrgProvider } from './context/OrgContext'
@@ -10,8 +11,15 @@ import Script from './pages/Script'
 import Scoreboard from './pages/Scoreboard'
 import Admin from './pages/Admin'
 import SpotifyCallback from './pages/SpotifyCallback'
+import { setupSpotifySDK, startPolling } from './lib/spotifyPlayer'
 
 export default function App() {
+  // If the user already has a Spotify token (returning visit / page refresh),
+  // kick off the SDK setup and polling. On first connect, SpotifyCallback does this.
+  useEffect(() => {
+    setupSpotifySDK().catch(() => {})
+    startPolling()
+  }, [])
 
   return (
     <BrowserRouter>
