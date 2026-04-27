@@ -165,8 +165,78 @@ function NewScriptDialog({ orgColor, defaultSport, onCancel, onCreate }) {
   )
 }
 
-// ── DrillRow ──────────────────────────────────────────────────────────────────
+// ── AddDrillForm ──────────────────────────────────────────────────────────────
+// Persistent form at the bottom of the drill list. Owns its own state,
+// reads values on Add click, calls onAdd(fields), then clears itself.
 const DURATION_PRESETS = [5, 10, 15, 20]
+
+function AddDrillForm({ orgColor, onAdd }) {
+  const [name, setName] = useState('')
+  const [mins, setMins] = useState('')
+  const [secs, setSecs] = useState('')
+
+  const activePreset = (m) =>
+    Number(mins) === m && (secs === '' || secs === '0' || Number(secs) === 0)
+
+  function handleAdd() {
+    const drillName = name.trim()
+    const duration  = Number(mins || 0) * 60 + Number(secs || 0)
+    console.log('[AddDrill] name:', JSON.stringify(drillName), 'mins:', mins, 'secs:', secs, '→ duration (s):', duration)
+    onAdd({ name: drillName, duration })
+    setName('')
+    setMins('')
+    setSecs('')
+  }
+
+  return (
+    <div className="rounded-xl p-3 flex flex-col gap-3 mt-1"
+      style={{ border: `2px dashed ${orgColor}44`, backgroundColor: '#0d0000' }}>
+
+      <input
+        value={name} onChange={e => setName(e.target.value)}
+        placeholder="Drill name..."
+        onKeyDown={e => { if (e.key === 'Enter' && name.trim()) handleAdd() }}
+        className="rounded-lg px-3 py-2.5 text-sm outline-none w-full"
+        style={{ backgroundColor: '#1a0000', border: '1px solid #3a0000', color: '#fff' }} />
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs shrink-0" style={{ color: '#9a8080' }}>Duration:</span>
+        <input
+          type="number" value={mins} min={0} placeholder="Min"
+          onChange={e => setMins(e.target.value)}
+          className="w-16 rounded-lg px-2 py-2 text-sm text-center outline-none"
+          style={{ backgroundColor: '#1a0000', border: '1px solid #3a0000', color: '#fff' }} />
+        <span className="text-xs" style={{ color: '#9a8080' }}>m</span>
+        <input
+          type="number" value={secs} min={0} max={59} placeholder="Sec"
+          onChange={e => setSecs(e.target.value)}
+          className="w-16 rounded-lg px-2 py-2 text-sm text-center outline-none"
+          style={{ backgroundColor: '#1a0000', border: '1px solid #3a0000', color: '#fff' }} />
+        <span className="text-xs" style={{ color: '#9a8080' }}>s</span>
+        {DURATION_PRESETS.map(m => (
+          <button key={m} type="button"
+            onClick={() => { setMins(String(m)); setSecs('0') }}
+            className="px-2.5 py-1 rounded-full text-xs font-semibold transition-opacity hover:opacity-80"
+            style={{
+              backgroundColor: activePreset(m) ? orgColor : '#2a0000',
+              color:           activePreset(m) ? '#fff'    : '#9a8080',
+              border: `1px solid ${activePreset(m) ? orgColor : '#3a0000'}`,
+            }}>
+            {m}m
+          </button>
+        ))}
+      </div>
+
+      <button onClick={handleAdd} disabled={!name.trim()}
+        className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+        style={{ backgroundColor: orgColor }}>
+        + Add Drill
+      </button>
+    </div>
+  )
+}
+
+// ── DrillRow ──────────────────────────────────────────────────────────────────
 
 function DrillRow({ drill, index, isEditing, isDragging, isOver, orgColor,
   rowRef, onStartDrag, onEditStart, onEditSave, onEditCancel, onDelete }) {
@@ -250,7 +320,7 @@ function DrillRow({ drill, index, isEditing, isDragging, isOver, orgColor,
       ) : (
         // ── Display mode ──────────────────────────────────────────────────────
         <div className="flex items-center gap-2">
-          {/* Drag handle — touchstart + mousedown */}
+          {/* Drag handle */}
           <div
             className="flex items-center justify-center w-8 h-8 shrink-0 rounded-lg cursor-grab active:cursor-grabbing touch-none"
             style={{ color: '#4a2020', fontSize: 18 }}
@@ -259,15 +329,12 @@ function DrillRow({ drill, index, isEditing, isDragging, isOver, orgColor,
             ⠿
           </div>
 
-          {/* Index badge */}
-          <span className="text-xs font-bold w-5 text-center shrink-0" style={{ color: '#4a2020' }}>
-            {index + 1}
-          </span>
-
           {/* Name + duration */}
-          <span className="flex-1 text-sm text-white truncate">{drill.name}</span>
-          <span className="text-xs font-mono shrink-0" style={{ color: '#9a8080' }}>
-            {fmt(drill.duration ?? 0)}
+          <span className="flex-1 text-base font-bold text-white truncate">
+            {drill.name || <span style={{ color: '#4a2020', fontStyle: 'italic', fontWeight: 400 }}>Untitled drill</span>}
+          </span>
+          <span className="text-sm font-mono shrink-0 px-2" style={{ color: '#9a8080' }}>
+            {drill.duration ? fmt(drill.duration) : '—'}
           </span>
 
           {/* Edit + Delete */}
@@ -354,10 +421,9 @@ function ScriptEditor({ script, orgId, userId, orgColor, isGuest, isActive,
   function updateDrills(d) { setDrills(d); schedSave(name, sport,  d) }
 
   // ── Drill mutations ─────────────────────────────────────────────────────────
-  function addDrill() {
-    const next = [...drills, { name: '', duration: 0 }]
+  function addDrill(fields) {
+    const next = [...drills, { name: fields.name, duration: fields.duration }]
     setDrills(next)
-    setEditingIndex(next.length - 1)
     schedSave(name, sport, next)
   }
 
@@ -484,12 +550,8 @@ function ScriptEditor({ script, orgId, userId, orgColor, isGuest, isActive,
             />
           ))}
 
-          {/* ── Add drill ───────────────────────────────────────────────── */}
-          <button onClick={addDrill}
-            className="mt-2 w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-            style={{ border: `2px dashed ${orgColor}44`, color: orgColor }}>
-            + Add Drill
-          </button>
+          {/* ── Add drill form ──────────────────────────────────────────── */}
+          <AddDrillForm orgColor={orgColor} onAdd={addDrill} />
         </div>
       </div>
     </div>
