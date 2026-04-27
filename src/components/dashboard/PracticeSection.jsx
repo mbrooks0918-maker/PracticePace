@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { playAirHorn, playWhistle, playPeriodEnd, loadHorn, getAutoSounds, setAutoSound } from '../../lib/sounds'
-import { duckForHorn as duckSpotify } from '../../lib/spotifyPlayer'
-import { duckForHorn as duckMp3 }     from '../../lib/audioPlayer'
+import { duckForHorn } from '../../lib/audioPlayer'
 
 function pad(n) { return String(n).padStart(2, '0') }
 function fmt(s) { return `${pad(Math.floor(Math.abs(s) / 60))}:${pad(Math.abs(s) % 60)}` }
@@ -14,11 +13,8 @@ function clockColor(left, total) {
   return '#ef4444'
 }
 
-// Duck both MP3 player and Spotify, then play horn
-function blowHorn() {
-  duckMp3(() => {})           // duck MP3 for 3 s, no second horn
-  duckSpotify(playAirHorn)    // duck Spotify + play horn, restore after 2 s
-}
+// Duck MP3 volume → play horn → restore after 3 s
+function blowHorn() { duckForHorn(playAirHorn) }
 
 // ── Practice prefs (localStorage) ─────────────────────────────────────────────
 function getPracticePrefs() {
