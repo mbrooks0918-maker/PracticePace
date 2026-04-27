@@ -73,27 +73,29 @@ export default function Dashboard() {
     return () => clearTimeout(t)
   }, [loading])
 
-  // App resume fix: when iPad returns from background the auth layer can
-  // set loading=true while refreshing its token. If the session is still
-  // valid, clear our loading flag immediately instead of waiting for a full
-  // data reload (which may never complete if the network is briefly flaky).
+  // App resume fix: when the tab becomes visible again, check the session
+  // once. If valid, clear any stuck loading state — do NOT reload data.
+  // If the session is gone (expired), redirect to login.
+  // Registered once with [] so tab-switching never triggers loadAll().
   useEffect(() => {
     const handleVisibility = async () => {
       if (document.visibilityState !== 'visible') return
-      if (!loading) return   // already unblocked — nothing to do
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          console.log('[Dashboard] App resumed with valid session — clearing loading')
-          setLoading(false)
+        if (!session) {
+          console.warn('[Dashboard] Session expired on resume — redirecting to login')
+          navigate('/')
+          return
         }
+        // Session valid — just unblock any stuck loading spinner, nothing else
+        setLoading(false)
       } catch {
-        setLoading(false)    // clear anyway; don't leave user stuck
+        setLoading(false)
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [loading])
+  }, [])
 
   // ── MP3 mini player state ──────────────────────────────────────────────────
   const [audioSnap, setAudioSnap] = useState(() => getAudioSnapshot())
@@ -107,9 +109,12 @@ export default function Dashboard() {
 
   const orgColor = org?.primary_color ?? '#cc1111'
 
+  // Use user?.id (stable string) not user (new object every token refresh).
+  // Without this, every token refresh fires loadAll() and makes the app
+  // look like it's reloading every time the user switches back to the tab.
   useEffect(() => {
-    if (user) loadAll()
-  }, [user])
+    if (user?.id) loadAll()
+  }, [user?.id])
 
   async function loadAll() {
     // ── Guest path: everything comes from localStorage ──────────────────────
