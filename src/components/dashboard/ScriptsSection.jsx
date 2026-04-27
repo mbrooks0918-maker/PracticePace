@@ -166,18 +166,20 @@ function NewScriptDialog({ orgColor, defaultSport, onCancel, onCreate }) {
 }
 
 // ── DrillRow ──────────────────────────────────────────────────────────────────
+const DURATION_PRESETS = [5, 10, 15, 20]
+
 function DrillRow({ drill, index, isEditing, isDragging, isOver, orgColor,
   rowRef, onStartDrag, onEditStart, onEditSave, onEditCancel, onDelete }) {
-  const [editName, setEditName] = useState(drill.name)
-  const [editMins, setEditMins] = useState(Math.floor((drill.duration ?? 0) / 60))
-  const [editSecs, setEditSecs] = useState((drill.duration ?? 0) % 60)
+  const [editName, setEditName] = useState(drill.name ?? '')
+  const [editMins, setEditMins] = useState(drill.duration ? String(Math.floor(drill.duration / 60)) : '')
+  const [editSecs, setEditSecs] = useState(drill.duration ? String(drill.duration % 60) : '')
 
   // Sync edit fields when editing starts
   useEffect(() => {
     if (isEditing) {
-      setEditName(drill.name)
-      setEditMins(Math.floor((drill.duration ?? 0) / 60))
-      setEditSecs((drill.duration ?? 0) % 60)
+      setEditName(drill.name ?? '')
+      setEditMins(drill.duration ? String(Math.floor(drill.duration / 60)) : '')
+      setEditSecs(drill.duration ? String(drill.duration % 60) : '')
     }
   }, [isEditing, drill])
 
@@ -196,37 +198,53 @@ function DrillRow({ drill, index, isEditing, isDragging, isOver, orgColor,
         <div className="flex flex-col gap-2">
           <input
             value={editName} onChange={e => setEditName(e.target.value)}
-            placeholder="Drill name" autoFocus
+            placeholder="Drill name..." autoFocus
             className="rounded-lg px-3 py-2.5 text-sm outline-none w-full"
             style={{ backgroundColor: '#0d0000', border: '1px solid #3a0000', color: '#fff' }} />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs shrink-0" style={{ color: '#9a8080' }}>Duration:</span>
-            <input type="number" value={editMins} min={0}
-              onChange={e => setEditMins(Math.max(0, Number(e.target.value)))}
+            <input type="number" value={editMins} min={0} placeholder="Min"
+              onChange={e => setEditMins(e.target.value)}
               className="w-16 rounded-lg px-2 py-2 text-sm text-center outline-none"
               style={{ backgroundColor: '#0d0000', border: '1px solid #3a0000', color: '#fff' }} />
             <span className="text-xs" style={{ color: '#9a8080' }}>m</span>
-            <input type="number" value={editSecs} min={0} max={59}
-              onChange={e => setEditSecs(Math.min(59, Math.max(0, Number(e.target.value))))}
+            <input type="number" value={editSecs} min={0} max={59} placeholder="Sec"
+              onChange={e => setEditSecs(e.target.value)}
               className="w-16 rounded-lg px-2 py-2 text-sm text-center outline-none"
               style={{ backgroundColor: '#0d0000', border: '1px solid #3a0000', color: '#fff' }} />
             <span className="text-xs" style={{ color: '#9a8080' }}>s</span>
-            <div className="flex gap-2 ml-auto">
-              <button onClick={onEditCancel}
-                className="px-3 py-2 rounded-lg text-xs font-semibold"
-                style={{ border: '1px solid #2a0000', color: '#9a8080' }}>
-                Cancel
+            {/* Duration hot buttons */}
+            {DURATION_PRESETS.map(m => (
+              <button key={m} type="button"
+                onClick={() => { setEditMins(String(m)); setEditSecs('0') }}
+                className="px-2.5 py-1 rounded-full text-xs font-semibold transition-opacity hover:opacity-80"
+                style={{
+                  backgroundColor: Number(editMins) === m && (editSecs === '0' || editSecs === 0)
+                    ? orgColor : '#2a0000',
+                  color: Number(editMins) === m && (editSecs === '0' || editSecs === 0)
+                    ? '#fff' : '#9a8080',
+                  border: `1px solid ${Number(editMins) === m && (editSecs === '0' || editSecs === 0)
+                    ? orgColor : '#3a0000'}`,
+                }}>
+                {m}m
               </button>
-              <button
-                onClick={() => onEditSave({
-                  name: editName.trim() || `Drill ${index + 1}`,
-                  duration: editMins * 60 + editSecs,
-                })}
-                className="px-3 py-2 rounded-lg text-xs font-bold text-white"
-                style={{ backgroundColor: orgColor }}>
-                Save
-              </button>
-            </div>
+            ))}
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={onEditCancel}
+              className="px-3 py-2 rounded-lg text-xs font-semibold"
+              style={{ border: '1px solid #2a0000', color: '#9a8080' }}>
+              Cancel
+            </button>
+            <button
+              onClick={() => onEditSave({
+                name: editName.trim(),
+                duration: Number(editMins || 0) * 60 + Number(editSecs || 0),
+              })}
+              className="px-3 py-2 rounded-lg text-xs font-bold text-white"
+              style={{ backgroundColor: orgColor }}>
+              Save
+            </button>
           </div>
         </div>
       ) : (
@@ -288,7 +306,7 @@ function ScriptEditor({ script, orgId, userId, orgColor, isGuest, isActive,
     const payload = {
       name:   nextName.trim()  || 'Untitled Script',
       sport:  nextSport.toLowerCase(),
-      drills: nextDrills.map(d => ({ name: d.name.trim() || 'Drill', duration: Number(d.duration) || 60 })),
+      drills: nextDrills.map(d => ({ name: d.name.trim(), duration: Number(d.duration) || 0 })),
     }
 
     try {
@@ -337,7 +355,7 @@ function ScriptEditor({ script, orgId, userId, orgColor, isGuest, isActive,
 
   // ── Drill mutations ─────────────────────────────────────────────────────────
   function addDrill() {
-    const next = [...drills, { name: `Drill ${drills.length + 1}`, duration: 300 }]
+    const next = [...drills, { name: '', duration: 0 }]
     setDrills(next)
     setEditingIndex(next.length - 1)
     schedSave(name, sport, next)
