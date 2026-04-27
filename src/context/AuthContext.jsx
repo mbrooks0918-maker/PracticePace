@@ -1,24 +1,15 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null)
+  const [user,    setUser]    = useState(null)
   const [profile, setProfile] = useState(null)   // { id, account_id, org_id, role, full_name, email }
   const [loading, setLoading] = useState(true)
-  const loadingDone = useRef(false)
 
-  function resolveLoading() {
-    if (!loadingDone.current) {
-      loadingDone.current = true
-      setLoading(false)
-    }
-  }
-
-  // Fetch the profile row for an authenticated (non-anonymous) user.
-  // Anonymous / guest users never have a profile row — that's fine.
-  // Never throws — errors are caught and treated as "no profile".
+  // Fetch profile for an authenticated non-anonymous user.
+  // Never throws — errors are treated as "no profile".
   async function fetchProfile(authUser) {
     if (!authUser || authUser.is_anonymous) {
       setProfile(null)
@@ -29,7 +20,7 @@ export function AuthProvider({ children }) {
         .from('profiles')
         .select('id, account_id, org_id, role, full_name, email')
         .eq('id', authUser.id)
-        .maybeSingle()          // maybeSingle never errors on 0 rows
+        .maybeSingle()
       setProfile(data ?? null)
     } catch {
       setProfile(null)
@@ -37,13 +28,13 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // Safety net: if loading hasn't resolved after 5 s, force it to false
+    // Safety net: force loading=false after 5 s no matter what
     const timeout = setTimeout(() => {
       console.warn('[Auth] Loading timeout — forcing loading=false')
-      resolveLoading()
+      setLoading(false)
     }, 5000)
 
-    // 1. Restore existing session on mount
+    // 1. Restore existing session on mount (sets initial loading state)
     supabase.auth.getSession()
       .then(async ({ data: { session } }) => {
         const authUser = session?.user ?? null
@@ -55,25 +46,45 @@ export function AuthProvider({ children }) {
       })
       .finally(() => {
         clearTimeout(timeout)
-        resolveLoading()
+        setLoading(false)
       })
 
-    // 2. Keep in sync with every auth state change (login, logout, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // 2. React to auth events after mount.
+    //
+    // SIGNED_IN: set loading=true before fetchProfile so ProtectedRoute waits
+    // for the profile before making routing decisions. Without this, the route
+    // renders while user is set but profile is still null, which incorrectly
+    // triggers the "no profile → /onboarding" redirect.
+    //
+    // SIGNED_OUT: clear state immediately.
+    //
+    // Everything else (TOKEN_REFRESHED, USER_UPDATED, INITIAL_SESSION, etc.):
+    // update silently without touching loading.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const authUser = session?.user ?? null
-      setUser(authUser)
-      await fetchProfile(authUser)
+
+      if (event === 'SIGNED_IN') {
+        setLoading(true)
+        setUser(authUser)
+        await fetchProfile(authUser)
+        setLoading(false)
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setProfile(null)
+      } else {
+        // TOKEN_REFRESHED, USER_UPDATED, INITIAL_SESSION, PASSWORD_RECOVERY …
+        setUser(authUser)
+        await fetchProfile(authUser)
+      }
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
   async function signOut() {
-    // Clear state immediately so the rest of the app sees no user at once
     setUser(null)
     setProfile(null)
     await supabase.auth.signOut()
-    // Hard redirect — guarantees clean slate regardless of React Router state
     window.location.replace('/')
   }
 
