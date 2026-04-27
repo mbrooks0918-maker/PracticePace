@@ -66,7 +66,12 @@ export function AuthProvider({ children }) {
       if (event === 'SIGNED_IN') {
         setLoading(true)
         setUser(authUser)
-        await fetchProfile(authUser)
+        // Race fetchProfile against a 4 s timeout so a flaky network on
+        // iPad resume can never leave loading=true indefinitely.
+        await Promise.race([
+          fetchProfile(authUser),
+          new Promise(resolve => setTimeout(resolve, 4000)),
+        ])
         setLoading(false)
       } else if (event === 'SIGNED_OUT') {
         setUser(null)

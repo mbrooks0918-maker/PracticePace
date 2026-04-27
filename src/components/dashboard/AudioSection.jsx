@@ -169,27 +169,45 @@ function LibraryTab({ songs, playingId, orgColor, orgId, onRefresh }) {
     if (!files.length) return
     e.target.value = ''
 
+    // Guard: org_id must be present before attempting any upload
+    if (!orgId) {
+      console.error('[Music] Upload blocked — orgId is null')
+      setUploads([{ name: 'Upload failed', progress: 0, error: 'Not connected to an organization. Please refresh and try again.' }])
+      return
+    }
+
+    console.log(`[Music] Starting upload of ${files.length} file(s) for org ${orgId}`)
     setUploads(files.map(f => ({ name: f.name, progress: 0, error: null })))
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       try {
+        // 1. Measure duration from local file before uploading
         const duration = await measureDuration(file)
+        console.log(`[Music] File ${i + 1}/${files.length}: "${file.name}" | duration: ${duration}s | size: ${file.size} bytes | type: ${file.type}`)
+
+        // 2. Build storage path — sanitise filename, prepend org_id folder
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const path     = `${orgId}/${Date.now()}_${safeName}`
+        console.log(`[Music] Uploading to storage path: ${path}`)
 
+        // 3. Upload to Supabase Storage (onUploadProgress not supported in
+        //    stable supabase-js v2 storage — use simple uploading/done states)
         const { error: uploadErr } = await supabase.storage
           .from(BUCKET)
           .upload(path, file, {
             cacheControl: '3600',
-            upsert: false,
-            onUploadProgress: ({ loaded, total }) => {
-              const pct = Math.round((loaded / total) * 100)
-              setUploads(prev => prev.map((u, j) => j === i ? { ...u, progress: pct } : u))
-            },
+            contentType:  file.type || 'audio/mpeg',
+            upsert:       false,
           })
-        if (uploadErr) throw uploadErr
 
+        if (uploadErr) {
+          console.error('[Music] Storage upload failed:', uploadErr)
+          throw new Error(uploadErr.message || JSON.stringify(uploadErr))
+        }
+        console.log(`[Music] Storage upload succeeded: ${path}`)
+
+        // 4. Get the highest existing position so we can append
         const { data: maxRow } = await supabase
           .from('songs')
           .select('position')
@@ -198,23 +216,36 @@ function LibraryTab({ songs, playingId, orgColor, orgId, onRefresh }) {
           .limit(1)
           .maybeSingle()
 
-        await supabase.from('songs').insert({
+        const nextPos = (maxRow?.position ?? -1) + 1
+        console.log(`[Music] Inserting song record at position ${nextPos}`)
+
+        // 5. Insert the song record — check and surface any DB error
+        const { error: insertErr } = await supabase.from('songs').insert({
           org_id:       orgId,
           name:         cleanName(file.name),
           storage_path: path,
           duration,
-          position:     (maxRow?.position ?? -1) + 1,
+          position:     nextPos,
         })
+
+        if (insertErr) {
+          console.error('[Music] DB insert failed:', insertErr)
+          // Storage file was uploaded but DB record failed — try to clean up
+          await supabase.storage.from(BUCKET).remove([path]).catch(() => {})
+          throw new Error(insertErr.message || JSON.stringify(insertErr))
+        }
+        console.log(`[Music] Song record inserted OK: "${cleanName(file.name)}"`)
 
         setUploads(prev => prev.map((u, j) => j === i ? { ...u, progress: 100 } : u))
       } catch (err) {
-        console.error('[Music] Upload error:', err.message)
-        setUploads(prev => prev.map((u, j) => j === i ? { ...u, error: err.message } : u))
+        const msg = err?.message ?? 'Unknown error'
+        console.error(`[Music] Upload failed for "${file.name}":`, msg)
+        setUploads(prev => prev.map((u, j) => j === i ? { ...u, error: msg } : u))
       }
     }
 
     await onRefresh()
-    setTimeout(() => setUploads([]), 2500)
+    setTimeout(() => setUploads([]), 4000)
   }
 
   async function handleDelete(song) {
@@ -264,13 +295,25 @@ function LibraryTab({ songs, playingId, orgColor, orgId, onRefresh }) {
           {uploads.map((u, i) => (
             <div key={i} className="flex flex-col gap-1">
               <div className="flex justify-between text-xs" style={{ color: u.error ? '#ff6666' : '#9a8080' }}>
-                <span className="truncate max-w-[220px]">{cleanName(u.name)}</span>
-                <span>{u.error ? 'Error' : u.progress === 100 ? '✓ Done' : `${u.progress}%`}</span>
+                <span className="truncate max-w-[180px]">{cleanName(u.name)}</span>
+                <span className="flex-shrink-0 ml-2">
+                  {u.error ? '✗ Failed' : u.progress === 100 ? '✓ Done' : 'Uploading…'}
+                </span>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#2a1a00' }}>
-                <div className="h-full rounded-full transition-all"
-                  style={{ width: `${u.progress}%`, backgroundColor: u.error ? '#cc3300' : orgColor }} />
-              </div>
+              {/* Actual error message on its own line */}
+              {u.error && (
+                <p className="text-xs leading-snug" style={{ color: '#ff6666' }}>
+                  {u.error}
+                </p>
+              )}
+              {!u.error && (
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#2a1a00' }}>
+                  <div
+                    className={`h-full rounded-full ${u.progress < 100 ? 'animate-pulse' : ''}`}
+                    style={{ width: u.progress === 100 ? '100%' : '60%', backgroundColor: orgColor }}
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>

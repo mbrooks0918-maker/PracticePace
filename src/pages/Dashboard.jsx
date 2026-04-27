@@ -63,14 +63,36 @@ export default function Dashboard() {
   const [activeScript, setActiveScript] = useState(null)
   const [loading, setLoading]           = useState(true)
 
-  // Safety net: if loadAll() somehow never finishes, force-unblock after 8 s
+  // Safety net: if loadAll() never finishes, force-unblock after 3 s
   useEffect(() => {
     if (!loading) return
     const t = setTimeout(() => {
       console.warn('[Dashboard] Load timeout — forcing loading=false')
       setLoading(false)
-    }, 8000)
+    }, 3000)
     return () => clearTimeout(t)
+  }, [loading])
+
+  // App resume fix: when iPad returns from background the auth layer can
+  // set loading=true while refreshing its token. If the session is still
+  // valid, clear our loading flag immediately instead of waiting for a full
+  // data reload (which may never complete if the network is briefly flaky).
+  useEffect(() => {
+    const handleVisibility = async () => {
+      if (document.visibilityState !== 'visible') return
+      if (!loading) return   // already unblocked — nothing to do
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          console.log('[Dashboard] App resumed with valid session — clearing loading')
+          setLoading(false)
+        }
+      } catch {
+        setLoading(false)    // clear anyway; don't leave user stuck
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [loading])
 
   // ── MP3 mini player state ──────────────────────────────────────────────────
