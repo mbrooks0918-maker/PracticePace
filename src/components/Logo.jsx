@@ -1,17 +1,8 @@
-import logoWhite from '../assets/practicepace-logo-white-text.svg'
-import logoBlack from '../assets/practicepace-logo-black-text.svg'
-import logoDark   from '../assets/practicepace-logo-dark.svg'      // red+white, used until red-text variant is added
-import icon       from '../assets/practicepace-icon-standalone.svg'
+import logo from '../assets/Practice_Pace.svg'
+import icon  from '../assets/practicepace-icon-standalone.svg'
 
-const SRCS = {
-  white: logoWhite,
-  black: logoBlack,
-  red:   logoDark,
-  icon,
-}
-
-export default function Logo({ variant = 'white', height = 48, className = '', style, ...props }) {
-  const src = SRCS[variant] ?? logoWhite
+export default function Logo({ variant = 'default', height = 48, className = '', style, ...props }) {
+  const src = variant === 'icon' ? icon : logo
   return (
     <img
       src={src}
