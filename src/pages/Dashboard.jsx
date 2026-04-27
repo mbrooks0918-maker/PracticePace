@@ -256,7 +256,7 @@ export default function Dashboard() {
           boxShadow: `0 2px 24px ${orgColor}44`,
         }}
       >
-        <Logo variant="white" height={36} className="shrink-0" />
+        <Logo variant="white" height={40} className="shrink-0" />
 
         <span className="font-bold text-white text-sm md:text-base text-center truncate px-4 max-w-[200px] md:max-w-sm">
           {isGuest ? 'Guest Mode' : (org?.name ?? '')}
