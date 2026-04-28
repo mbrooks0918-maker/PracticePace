@@ -10,6 +10,7 @@ import Script from './pages/Script'
 import Scoreboard from './pages/Scoreboard'
 import Admin from './pages/Admin'
 import AcceptInvite from './pages/AcceptInvite'
+import Pricing      from './pages/Pricing'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <OrgProvider>
           <Routes>
             <Route path="/"           element={<Login />} />
+            <Route path="/pricing"    element={<Pricing />} />
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/dashboard"  element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/display"    element={<ProtectedRoute><Display /></ProtectedRoute>} />

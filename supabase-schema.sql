@@ -291,3 +291,22 @@ create policy "org admins can manage invites"
 -- 5. Add created_by to videos (run if the videos table already exists)
 alter table videos
   add column if not exists created_by uuid references profiles(id) on delete set null;
+
+-- 6. Stripe billing — extend subscriptions table
+--    Run these in Supabase SQL Editor after deploying the billing feature.
+
+-- Allow past_due status (webhook sets this on invoice.payment_failed)
+alter table subscriptions
+  drop constraint if exists subscriptions_status_check;
+alter table subscriptions
+  add constraint subscriptions_status_check
+  check (status in ('trialing', 'active', 'canceled', 'past_due'));
+
+-- Track which tier (single program vs school) and exact price ID
+alter table subscriptions
+  add column if not exists tier     text default 'single' check (tier in ('single', 'school'));
+alter table subscriptions
+  add column if not exists price_id text;
+
+-- Ensure only one subscription row per org (safe to add — org:subscription is 1:1)
+create unique index if not exists subscriptions_org_id_unique_idx on subscriptions(org_id);

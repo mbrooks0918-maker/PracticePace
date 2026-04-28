@@ -62,6 +62,8 @@ export default function Dashboard() {
   const [scripts, setScripts]           = useState([])
   const [activeScript, setActiveScript] = useState(null)
   const [loading, setLoading]           = useState(true)
+  const [subscription, setSubscription] = useState(null)   // subscriptions row or null
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
 
   // Safety net: if loadAll() never finishes, force-unblock after 3 s
   useEffect(() => {
@@ -108,6 +110,19 @@ export default function Dashboard() {
   const showMiniPlayer = !!(audioSnap.song && audioSnap.isPlaying)
 
   const orgColor = org?.primary_color ?? '#cc1111'
+
+  // ── Subscription derived state ─────────────────────────────────────────────
+  const subStatus  = subscription?.status ?? null
+  const trialEndsAt = subscription?.trial_ends_at ? new Date(subscription.trial_ends_at) : null
+  const daysLeft   = trialEndsAt ? Math.ceil((trialEndsAt - new Date()) / 86400000) : null
+  const showTrialBanner = !isGuest && subStatus === 'trialing' && daysLeft !== null
+  const trialUrgent     = showTrialBanner && daysLeft <= 3
+  const showPaywall     = !isGuest && subStatus !== null &&
+                          (subStatus === 'canceled' || subStatus === 'past_due')
+
+  // Default price IDs for subscribe button (single monthly)
+  const PRICE_SINGLE_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_SINGLE_MONTHLY
+  const PRICE_SCHOOL_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_SCHOOL_MONTHLY
 
   // Use user?.id (stable string) not user (new object every token refresh).
   // Without this, every token refresh fires loadAll() and makes the app
@@ -171,11 +186,43 @@ export default function Dashboard() {
             setActiveScript(sample)
           }
         }
+
+        // Fetch subscription status for trial banner / paywall
+        const { data: sub } = await supabase
+          .from('subscriptions')
+          .select('status, trial_ends_at, stripe_customer_id, plan, tier, price_id')
+          .eq('org_id', resolvedOrgId)
+          .maybeSingle()
+        setSubscription(sub ?? null)
       }
     } catch (err) {
       console.error('[Dashboard] loadAll error:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ── Stripe checkout helper ─────────────────────────────────────────────────
+  async function startCheckout(priceId) {
+    if (!org?.id || !user?.email) return
+    setCheckoutLoading(true)
+    try {
+      const res = await fetch('/api/stripe-checkout', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          priceId,
+          accountId: org.id,
+          email:     user.email,
+          orgName:   org.name ?? '',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Checkout failed')
+      window.location.href = data.url
+    } catch (err) {
+      console.error('[Dashboard] startCheckout error:', err.message)
+      setCheckoutLoading(false)
     }
   }
 
@@ -277,6 +324,31 @@ export default function Dashboard() {
         </button>
       </header>
 
+      {/* ── Trial banner ── */}
+      {showTrialBanner && (
+        <div
+          className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 text-xs font-semibold flex-wrap"
+          style={{
+            backgroundColor: trialUrgent ? '#2a0000' : '#1a0d00',
+            borderBottom:    `1px solid ${trialUrgent ? '#cc1111' : '#3a2000'}`,
+          }}
+        >
+          <span style={{ color: trialUrgent ? '#ff6666' : '#cc8800' }}>
+            {trialUrgent
+              ? `⚠️ Only ${daysLeft} day${daysLeft === 1 ? '' : 's'} left in your trial — subscribe to keep access`
+              : `✦ ${daysLeft} day${daysLeft === 1 ? '' : 's'} left in your trial`}
+          </span>
+          <button
+            onClick={() => startCheckout(PRICE_SINGLE_MONTHLY)}
+            disabled={checkoutLoading}
+            className="px-3 py-1.5 rounded-lg font-bold text-white disabled:opacity-50 transition-all active:scale-95"
+            style={{ backgroundColor: trialUrgent ? '#cc1111' : '#8a5500' }}
+          >
+            {checkoutLoading ? 'Loading…' : 'Subscribe →'}
+          </button>
+        </div>
+      )}
+
       {/* ── Guest banner ── */}
       {isGuest && (
         <div
@@ -291,6 +363,58 @@ export default function Dashboard() {
           >
             Sign up to sync →
           </button>
+        </div>
+      )}
+
+      {/* ── Subscription paywall ── */}
+      {showPaywall && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 text-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(8px)' }}>
+          <div className="w-full max-w-md flex flex-col items-center gap-6">
+            <div style={{ fontSize: 56 }}>🔒</div>
+            <div>
+              <h2 className="text-2xl font-black text-white mb-2">
+                {subStatus === 'past_due' ? 'Payment failed' : 'Subscription ended'}
+              </h2>
+              <p className="text-sm leading-relaxed" style={{ color: '#9a8080' }}>
+                {subStatus === 'past_due'
+                  ? 'Your last payment didn\'t go through. Update your payment method to restore access.'
+                  : 'Your subscription has ended. Subscribe to keep practicing with PracticePace.'}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 w-full">
+              <button
+                onClick={() => startCheckout(PRICE_SINGLE_MONTHLY)}
+                disabled={checkoutLoading}
+                className="w-full py-4 rounded-xl text-base font-black text-white disabled:opacity-50"
+                style={{ backgroundColor: '#cc1111', boxShadow: '0 4px 24px #cc111166' }}
+              >
+                {checkoutLoading ? 'Loading…' : 'Subscribe — Single Program $79/mo'}
+              </button>
+              <button
+                onClick={() => startCheckout(PRICE_SCHOOL_MONTHLY)}
+                disabled={checkoutLoading}
+                className="w-full py-4 rounded-xl text-base font-black text-white disabled:opacity-50"
+                style={{ border: '2px solid #cc1111', backgroundColor: 'transparent' }}
+              >
+                {checkoutLoading ? 'Loading…' : 'Subscribe — School $199/mo'}
+              </button>
+              <button
+                onClick={() => navigate('/pricing')}
+                className="text-sm underline mt-1 transition-opacity hover:opacity-70"
+                style={{ color: '#9a8080' }}
+              >
+                View all plans →
+              </button>
+            </div>
+
+            <button onClick={signOut}
+              className="text-xs underline opacity-50 hover:opacity-80"
+              style={{ color: '#9a8080' }}>
+              Sign out
+            </button>
+          </div>
         </div>
       )}
 
@@ -343,6 +467,9 @@ export default function Dashboard() {
               profile={profile ?? authProfile}
               orgColor={orgColor}
               onOrgUpdate={handleOrgUpdate}
+              subscription={subscription}
+              onStartCheckout={startCheckout}
+              checkoutLoading={checkoutLoading}
             />
           )}
 
