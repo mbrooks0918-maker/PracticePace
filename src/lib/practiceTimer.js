@@ -35,6 +35,7 @@ let s = {
   isOverrun:        false,
   overrunSeconds:   0,
   manualDuration:   300,     // Quick Timer default: 5 min
+  savedAt:          null,    // wall-clock ms of the last tick save — used by catchUp()
   // coach preferences
   autoAdvance:      savedPrefs.autoAdvance  ?? true,
   allowOverrun:     savedPrefs.allowOverrun ?? false,
@@ -72,8 +73,79 @@ let s = {
 
 function persistState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...s, savedAt: Date.now() }))
+    s.savedAt = Date.now()
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...s }))
   } catch {}
+}
+
+// ── Catch-up after browser suspension ────────────────────────────────────────
+// Called whenever the tab becomes visible again.  We compute how many seconds
+// elapsed since the last tick, then forward-simulate through the drill sequence
+// so the display jumps to wherever the timer *should* be.
+
+function catchUp() {
+  if (!s.isRunning) return       // nothing to catch up
+  if (!s.savedAt)   return       // no anchor — can't compute
+
+  const elapsed = Math.max(0, Math.floor((Date.now() - s.savedAt) / 1000))
+  if (elapsed <= 1) return       // only a brief gap — interval handles it
+
+  // Already in overrun — just accumulate elapsed time and bail
+  if (s.isOverrun) {
+    s.overrunSeconds += elapsed
+    s.savedAt = Date.now()
+    emit()
+    return
+  }
+
+  // Forward-simulate elapsed seconds through the drill sequence
+  let remaining = elapsed
+  const drills  = s.activeScript?.drills ?? []
+
+  while (remaining > 0) {
+    if (s.secondsLeft > remaining) {
+      // Still in the same drill
+      s.secondsLeft -= remaining
+      remaining = 0
+    } else {
+      // Current drill expires
+      remaining -= s.secondsLeft
+      s.secondsLeft = 0
+
+      const nxt = s.currentDrillIdx + 1
+
+      if (s.autoAdvance && nxt < drills.length) {
+        // Advance to next drill and keep consuming time
+        s.currentDrillIdx = nxt
+        const dur      = Number(drills[nxt].duration) || 0
+        s.secondsLeft  = dur
+        s.totalSeconds = dur
+        s.isOverrun    = false
+        s.overrunSeconds = 0
+      } else if (s.allowOverrun) {
+        // Entered overrun
+        s.isOverrun      = true
+        s.overrunSeconds = remaining
+        remaining = 0
+      } else {
+        // Timer stops
+        s.isRunning   = false
+        s.secondsLeft = 0
+        stopInterval()
+        remaining = 0
+      }
+    }
+  }
+
+  s.savedAt = Date.now()
+  emit()
+}
+
+// Register once at module load — fires on every tab-visible event
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') catchUp()
+  })
 }
 
 // ── Pub-sub ───────────────────────────────────────────────────────────────────
