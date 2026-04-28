@@ -1,0 +1,15 @@
+{
+  "name": "PracticePace",
+  "short_name": "PracticePace",
+  "description": "Practice smarter. Win more.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#080000",
+  "theme_color": "#cc1111",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
