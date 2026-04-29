@@ -1,25 +1,19 @@
-// Vercel Serverless Function (Node.js) — Stripe webhook handler
-// Uses Node.js runtime so we can read the raw request body for
-// Stripe signature verification. bodyParser must be disabled.
+// Vercel Serverless Function (Node.js runtime) — Stripe webhook handler
 //
-// REQUIRED ENV VARS:
+// MUST be Node.js (not Edge) so we can stream the raw body for HMAC verification.
+// bodyParser: false tells Vercel NOT to pre-parse the body.
+//
+// REQUIRED ENV VARS (set in Vercel → Settings → Environment Variables):
 //   STRIPE_SECRET_KEY
 //   STRIPE_WEBHOOK_SECRET
-//   VITE_SUPABASE_URL
+//   VITE_SUPABASE_URL        (same key re-used from the frontend)
 //   SUPABASE_SERVICE_ROLE_KEY
 //
-// REQUIRED SQL MIGRATIONS (run in Supabase SQL editor):
-//   -- Add past_due status, tier, and price_id columns
-//   ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_status_check;
-//   ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_status_check
-//     CHECK (status IN ('trialing','active','canceled','past_due'));
-//   ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS tier   text DEFAULT 'single' CHECK (tier IN ('single','school'));
-//   ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS price_id text;
-//
-// Configure webhook in Stripe dashboard:
-//   Endpoint URL: https://practicepace.app/api/stripe-webhook
-//   Events: checkout.session.completed, customer.subscription.updated,
-//           customer.subscription.deleted, invoice.payment_failed
+// Supabase table used: accounts
+//   columns: id (matches org_id / accountId from Stripe metadata),
+//            stripe_customer_id, stripe_subscription_id,
+//            status ('trialing'|'active'|'past_due'|'canceled'),
+//            trial_ends_at
 
 import crypto from 'crypto'
 
@@ -29,11 +23,13 @@ export const config = { api: { bodyParser: false } }
 function verifyStripeSignature(rawBody, sigHeader, secret) {
   if (!sigHeader) throw new Error('Missing stripe-signature header')
 
-  const parts     = sigHeader.split(',')
-  const timestamp = parts.find(p => p.startsWith('t='))?.slice(2)
+  const parts      = sigHeader.split(',')
+  const timestamp  = parts.find(p => p.startsWith('t='))?.slice(2)
   const signatures = parts.filter(p => p.startsWith('v1=')).map(p => p.slice(3))
 
-  if (!timestamp || signatures.length === 0) throw new Error('Invalid stripe-signature format')
+  if (!timestamp || signatures.length === 0) {
+    throw new Error('Invalid stripe-signature format')
+  }
 
   // Reject requests older than 5 minutes
   const now = Math.floor(Date.now() / 1000)
@@ -46,15 +42,18 @@ function verifyStripeSignature(rawBody, sigHeader, secret) {
     .update(`${timestamp}.${rawBody}`)
     .digest('hex')
 
-  const match = signatures.some(s => {
-    try { return crypto.timingSafeEqual(Buffer.from(s, 'hex'), Buffer.from(expected, 'hex')) }
-    catch { return false }
+  const match = signatures.some(sig => {
+    try {
+      return crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))
+    } catch {
+      return false
+    }
   })
 
   if (!match) throw new Error('Webhook signature mismatch')
 }
 
-// ── Supabase REST helpers (service role, bypasses RLS) ───────────────────────
+// ── Supabase REST helpers (service role — bypasses RLS) ──────────────────────
 function sbHeaders(serviceKey) {
   return {
     'Content-Type':  'application/json',
@@ -64,47 +63,41 @@ function sbHeaders(serviceKey) {
 }
 
 async function sbSelect(table, filter, supabaseUrl, serviceKey) {
-  const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${filter}&select=id,org_id`, {
-    headers: sbHeaders(serviceKey),
-  })
-  if (!res.ok) throw new Error(`Supabase select failed: ${await res.text()}`)
-  return res.json()
+  const url = `${supabaseUrl}/rest/v1/${table}?${filter}&select=*`
+  console.log('[webhook] sbSelect →', `${table}?${filter}`)
+  const res  = await fetch(url, { headers: sbHeaders(serviceKey) })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Supabase SELECT failed (${res.status}): ${text}`)
+  return JSON.parse(text)
 }
 
 async function sbPatch(table, filter, data, supabaseUrl, serviceKey) {
-  const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${filter}`, {
+  const url = `${supabaseUrl}/rest/v1/${table}?${filter}`
+  console.log('[webhook] sbPatch →', `${table}?${filter}`, JSON.stringify(data))
+  const res  = await fetch(url, {
     method:  'PATCH',
     headers: { ...sbHeaders(serviceKey), 'Prefer': 'return=representation' },
     body:    JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`Supabase patch failed: ${await res.text()}`)
-  return res.json()   // array of updated rows (empty if no match)
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Supabase PATCH failed (${res.status}): ${text}`)
+  return JSON.parse(text)   // array of updated rows
 }
 
-async function sbInsert(table, data, supabaseUrl, serviceKey) {
-  const res = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+async function sbUpsert(table, data, onConflict, supabaseUrl, serviceKey) {
+  const url = `${supabaseUrl}/rest/v1/${table}`
+  console.log('[webhook] sbUpsert →', table, `(on_conflict=${onConflict})`, JSON.stringify(data))
+  const res  = await fetch(url, {
     method:  'POST',
-    headers: { ...sbHeaders(serviceKey), 'Prefer': 'return=minimal' },
-    body:    JSON.stringify(data),
+    headers: {
+      ...sbHeaders(serviceKey),
+      'Prefer': `return=representation,resolution=merge-duplicates`,
+    },
+    body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`Supabase insert failed: ${await res.text()}`)
-}
-
-// ── Plan / tier helpers ───────────────────────────────────────────────────────
-function getPlan(priceId) {
-  const annualIds = [
-    process.env.STRIPE_PRICE_SINGLE_ANNUAL,
-    process.env.STRIPE_PRICE_SCHOOL_ANNUAL,
-  ]
-  return annualIds.includes(priceId) ? 'annual' : 'monthly'
-}
-
-function getTier(priceId) {
-  const schoolIds = [
-    process.env.STRIPE_PRICE_SCHOOL_MONTHLY,
-    process.env.STRIPE_PRICE_SCHOOL_ANNUAL,
-  ]
-  return schoolIds.includes(priceId) ? 'school' : 'single'
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Supabase UPSERT failed (${res.status}): ${text}`)
+  return JSON.parse(text)
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -114,139 +107,213 @@ export default async function handler(req, res) {
     return
   }
 
-  // Read raw body as Buffer
-  const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
-  const rawBody = Buffer.concat(chunks).toString('utf8')
+  // ── Log env var presence (values are never logged) ────────────────────────
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+  const secretKey     = process.env.STRIPE_SECRET_KEY
+  const supabaseUrl   = process.env.VITE_SUPABASE_URL
+  const serviceKey    = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  // Verify Stripe signature
-  try {
-    verifyStripeSignature(rawBody, req.headers['stripe-signature'], process.env.STRIPE_WEBHOOK_SECRET)
-  } catch (err) {
-    console.error('[stripe-webhook] Signature error:', err.message)
-    res.status(400).json({ error: `Webhook Error: ${err.message}` })
+  console.log('[webhook] env check:', {
+    STRIPE_WEBHOOK_SECRET:     !!webhookSecret,
+    STRIPE_SECRET_KEY:         !!secretKey,
+    VITE_SUPABASE_URL:         !!supabaseUrl,
+    SUPABASE_SERVICE_ROLE_KEY: !!serviceKey,
+  })
+
+  if (!webhookSecret) {
+    console.error('[webhook] STRIPE_WEBHOOK_SECRET is not set — cannot verify signature')
+    // Return 200 so Stripe doesn't retry an unconfigured endpoint forever
+    res.status(200).json({ received: true, warning: 'webhook secret not configured' })
     return
   }
 
-  const event       = JSON.parse(rawBody)
-  const supabaseUrl = process.env.VITE_SUPABASE_URL
-  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY
+  // ── Read raw body (required for HMAC signature check) ─────────────────────
+  let rawBody
+  try {
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    rawBody = Buffer.concat(chunks).toString('utf8')
+    console.log('[webhook] raw body length:', rawBody.length)
+  } catch (err) {
+    console.error('[webhook] Failed to read request body:', err.message)
+    res.status(400).json({ error: 'Could not read request body' })
+    return
+  }
+
+  // ── Verify Stripe signature ────────────────────────────────────────────────
+  try {
+    verifyStripeSignature(rawBody, req.headers['stripe-signature'], webhookSecret)
+    console.log('[webhook] Signature verified OK')
+  } catch (err) {
+    console.error('[webhook] Signature verification failed:', err.message)
+    res.status(400).json({ error: `Webhook signature error: ${err.message}` })
+    return
+  }
+
+  // ── Parse event ───────────────────────────────────────────────────────────
+  let event
+  try {
+    event = JSON.parse(rawBody)
+  } catch (err) {
+    console.error('[webhook] Failed to parse event JSON:', err.message)
+    res.status(400).json({ error: 'Invalid JSON body' })
+    return
+  }
+
+  console.log('[webhook] received event:', event.type, event.id)
+
+  // ── From here on: ALWAYS return 200 to Stripe.
+  //    DB errors are logged but must not cause Stripe to retry endlessly —
+  //    retries won't fix schema mismatches or misconfigured env vars.
+  // ──────────────────────────────────────────────────────────────────────────
 
   if (!supabaseUrl || !serviceKey) {
-    console.error('[stripe-webhook] Missing Supabase env vars')
-    res.status(500).json({ error: 'Server misconfigured' })
+    console.error('[webhook] Supabase env vars missing — event received but not stored:', event.type)
+    res.status(200).json({ received: true, warning: 'supabase not configured' })
     return
   }
 
   try {
     switch (event.type) {
 
-      // ── New subscriber (trial starts) ──────────────────────────────────────
+      // ── New subscriber: trial starts ───────────────────────────────────────
       case 'checkout.session.completed': {
         const session        = event.data.object
-        const orgId          = session.metadata?.accountId
+        const accountId      = session.metadata?.accountId   // = org_id
         const customerId     = session.customer
         const subscriptionId = session.subscription
         const priceId        = session.metadata?.priceId
 
-        if (!orgId || !customerId || !subscriptionId) {
-          console.warn('[stripe-webhook] checkout.session.completed: missing metadata', session.id)
+        console.log('[webhook] checkout.session.completed:', {
+          accountId, customerId, subscriptionId, priceId,
+          sessionId:   session.id,
+          allMetadata: session.metadata,
+        })
+
+        if (!accountId || !customerId || !subscriptionId) {
+          console.warn('[webhook] checkout.session.completed: missing required metadata — skipping DB write')
+          console.warn('[webhook] Expected session.metadata.accountId to contain the org ID')
           break
         }
 
-        // Fetch the subscription to get trial_end
-        const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
-          headers: { 'Authorization': `Bearer ${process.env.STRIPE_SECRET_KEY}` },
-        })
-        const sub = await subRes.json()
-        const trialEndsAt = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null
+        // Fetch the Stripe subscription to get the exact trial_end timestamp
+        let trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+        if (secretKey) {
+          try {
+            const subRes  = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+              headers: { 'Authorization': `Bearer ${secretKey}` },
+            })
+            const subData = await subRes.json()
+            if (subData.trial_end) {
+              trialEndsAt = new Date(subData.trial_end * 1000).toISOString()
+            }
+            console.log('[webhook] Stripe subscription trial_end:', trialEndsAt)
+          } catch (err) {
+            console.error('[webhook] Failed to fetch Stripe subscription (using +14d fallback):', err.message)
+          }
+        }
 
         const payload = {
+          id:                     accountId,        // accounts.id = org_id / accountId
           stripe_customer_id:     customerId,
           stripe_subscription_id: subscriptionId,
           status:                 'trialing',
-          plan:                   getPlan(priceId),
-          tier:                   getTier(priceId),
-          price_id:               priceId,
           trial_ends_at:          trialEndsAt,
         }
 
-        // Upsert: update if row exists for org, otherwise insert
-        const existing = await sbSelect('subscriptions', `org_id=eq.${orgId}`, supabaseUrl, serviceKey)
-        if (existing.length > 0) {
-          await sbPatch('subscriptions', `org_id=eq.${orgId}`, payload, supabaseUrl, serviceKey)
-        } else {
-          await sbInsert('subscriptions', { org_id: orgId, ...payload }, supabaseUrl, serviceKey)
+        try {
+          // Upsert into accounts — id is the conflict target
+          const rows = await sbUpsert('accounts', payload, 'id', supabaseUrl, serviceKey)
+          console.log('[webhook] checkout.session.completed: upserted account rows:', rows.length, '— accountId:', accountId)
+        } catch (dbErr) {
+          console.error('[webhook] DB upsert failed for checkout.session.completed:', dbErr.message)
         }
-
-        console.log(`[stripe-webhook] checkout.session.completed: org ${orgId} → trialing`)
         break
       }
 
       // ── Subscription status changed (active, past_due, canceled, etc.) ────
       case 'customer.subscription.updated': {
         const sub            = event.data.object
+        const customerId     = sub.customer
         const subscriptionId = sub.id
-        const status         = sub.status   // trialing|active|past_due|canceled|...
+        const status         = sub.status
         const trialEndsAt    = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null
-        const priceId        = sub.items?.data?.[0]?.price?.id
 
-        const payload = {
+        console.log('[webhook] subscription.updated:', { customerId, subscriptionId, status })
+
+        const patch = {
+          stripe_subscription_id: subscriptionId,
           status,
-          ...(trialEndsAt && { trial_ends_at: trialEndsAt }),
-          ...(priceId && { plan: getPlan(priceId), tier: getTier(priceId), price_id: priceId }),
+          ...(trialEndsAt !== null && { trial_ends_at: trialEndsAt }),
         }
 
-        const updated = await sbPatch(
-          'subscriptions',
-          `stripe_subscription_id=eq.${subscriptionId}`,
-          payload,
-          supabaseUrl,
-          serviceKey
-        )
-
-        console.log(`[stripe-webhook] subscription.updated: ${subscriptionId} → ${status} (${updated.length} rows)`)
+        try {
+          const updated = await sbPatch(
+            'accounts',
+            `stripe_customer_id=eq.${customerId}`,
+            patch,
+            supabaseUrl,
+            serviceKey
+          )
+          console.log(`[webhook] subscription.updated: ${customerId} → ${status} (${updated.length} rows updated)`)
+        } catch (dbErr) {
+          console.error('[webhook] DB patch failed for subscription.updated:', dbErr.message)
+        }
         break
       }
 
       // ── Subscription canceled / deleted ────────────────────────────────────
       case 'customer.subscription.deleted': {
-        const subscriptionId = event.data.object.id
-        await sbPatch(
-          'subscriptions',
-          `stripe_subscription_id=eq.${subscriptionId}`,
-          { status: 'canceled' },
-          supabaseUrl,
-          serviceKey
-        )
-        console.log(`[stripe-webhook] subscription.deleted: ${subscriptionId} → canceled`)
+        const sub        = event.data.object
+        const customerId = sub.customer
+
+        console.log('[webhook] subscription.deleted:', { customerId, subId: sub.id })
+
+        try {
+          const updated = await sbPatch(
+            'accounts',
+            `stripe_customer_id=eq.${customerId}`,
+            { status: 'canceled' },
+            supabaseUrl,
+            serviceKey
+          )
+          console.log(`[webhook] subscription.deleted: ${customerId} → canceled (${updated.length} rows)`)
+        } catch (dbErr) {
+          console.error('[webhook] DB patch failed for subscription.deleted:', dbErr.message)
+        }
         break
       }
 
       // ── Payment failed ─────────────────────────────────────────────────────
       case 'invoice.payment_failed': {
-        const invoice        = event.data.object
-        const subscriptionId = invoice.subscription
-        const customerId     = invoice.customer
+        const invoice    = event.data.object
+        const customerId = invoice.customer
 
-        // Prefer subscription ID for precision; fall back to customer ID
-        const filter = subscriptionId
-          ? `stripe_subscription_id=eq.${subscriptionId}`
-          : `stripe_customer_id=eq.${customerId}`
+        console.log('[webhook] invoice.payment_failed:', { customerId, invoiceId: invoice.id })
 
-        await sbPatch('subscriptions', filter, { status: 'past_due' }, supabaseUrl, serviceKey)
-        console.log(`[stripe-webhook] invoice.payment_failed: sub ${subscriptionId ?? customerId} → past_due`)
+        try {
+          const updated = await sbPatch(
+            'accounts',
+            `stripe_customer_id=eq.${customerId}`,
+            { status: 'past_due' },
+            supabaseUrl,
+            serviceKey
+          )
+          console.log(`[webhook] invoice.payment_failed: ${customerId} → past_due (${updated.length} rows)`)
+        } catch (dbErr) {
+          console.error('[webhook] DB patch failed for invoice.payment_failed:', dbErr.message)
+        }
         break
       }
 
       default:
-        // Unhandled event — return 200 so Stripe doesn't retry
-        console.log(`[stripe-webhook] Unhandled event type: ${event.type}`)
+        console.log('[webhook] Unhandled event type (ignored):', event.type)
     }
-
-    res.status(200).json({ received: true })
   } catch (err) {
-    console.error('[stripe-webhook] Handler error:', err.message)
-    res.status(500).json({ error: 'Webhook handler error' })
+    // Safety net — still return 200
+    console.error('[webhook] Unexpected error processing', event.type, ':', err.message, err.stack)
   }
+
+  // Always acknowledge to Stripe
+  res.status(200).json({ received: true })
 }
