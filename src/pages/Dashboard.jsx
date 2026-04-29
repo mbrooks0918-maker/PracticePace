@@ -158,9 +158,15 @@ export default function Dashboard() {
       // return null for it silently if the FK schema cache hasn't refreshed.
       const { data: prof } = await supabase
         .from('profiles')
-        .select('id, org_id, full_name, email, role')
+        .select('id, org_id, account_id, full_name, email, role')
         .eq('id', user.id)
         .maybeSingle()
+
+      console.log('[Dashboard] profile:', {
+        id:         prof?.id,
+        org_id:     prof?.org_id,
+        account_id: prof?.account_id,
+      })
 
       setProfile(prof ?? null)
 
@@ -188,13 +194,33 @@ export default function Dashboard() {
           }
         }
 
-        // Fetch subscription status for trial banner / paywall
-        const { data: sub } = await supabase
-          .from('subscriptions')
-          .select('status, trial_ends_at, stripe_customer_id, plan, tier, price_id')
-          .eq('org_id', resolvedOrgId)
-          .maybeSingle()
-        setSubscription(sub ?? null)
+        // Fetch account/subscription status from the accounts table.
+        // The accounts row id matches profile.account_id (set during onboarding).
+        const accountId = prof?.account_id ?? null
+        console.log('[Dashboard] fetching account status — account_id:', accountId)
+
+        if (accountId) {
+          const { data: accountData, error: accountErr } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('id', accountId)
+            .single()
+
+          if (accountErr) {
+            console.error('[Dashboard] accounts fetch error:', accountErr.message)
+          } else {
+            console.log('[Dashboard] account row:', {
+              id:         accountData?.id,
+              status:     accountData?.status,
+              trial_ends_at: accountData?.trial_ends_at,
+              stripe_customer_id: accountData?.stripe_customer_id ? '(set)' : '(null)',
+            })
+          }
+          setSubscription(accountData ?? null)
+        } else {
+          console.warn('[Dashboard] profile.account_id is null — no account row to fetch')
+          setSubscription(null)
+        }
       }
     } catch (err) {
       console.error('[Dashboard] loadAll error:', err)
