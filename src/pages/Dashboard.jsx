@@ -274,7 +274,16 @@ export default function Dashboard() {
       new Date(subscription.trial_ends_at) > new Date()
     const skipTrial = trialStillActive
 
-    console.log('[Dashboard] startCheckout →', { priceId, skipTrial, accountId: org.id })
+    // accountId must be the accounts table UUID (not the organizations UUID).
+    // subscription state IS the accounts row, so subscription.id is correct.
+    const accountId = subscription?.id ?? null
+    if (!accountId) {
+      setCheckoutError('Account ID not found — please reload and try again.')
+      console.error('[Dashboard] startCheckout: subscription.id is missing', { subscription })
+      return
+    }
+
+    console.log('[Dashboard] startCheckout →', { priceId, skipTrial, accountId, orgId: org.id })
 
     setCheckoutLoading(true)
     try {
@@ -283,7 +292,7 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           priceId,
-          accountId: org.id,
+          accountId,           // accounts.id — the webhook upserts WHERE id = accountId
           email:     user.email,
           orgName:   org.name ?? '',
           skipTrial,

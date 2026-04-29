@@ -85,17 +85,20 @@ async function sbPatch(table, filter, data, supabaseUrl, serviceKey) {
 }
 
 async function sbUpsert(table, data, onConflict, supabaseUrl, serviceKey) {
-  const url = `${supabaseUrl}/rest/v1/${table}`
-  console.log('[webhook] sbUpsert →', table, `(on_conflict=${onConflict})`, JSON.stringify(data))
+  // on_conflict MUST be in the query string — without it PostgREST does a plain
+  // INSERT and silently skips the row if a conflict exists.
+  const url = `${supabaseUrl}/rest/v1/${table}?on_conflict=${onConflict}`
+  console.log('[webhook] sbUpsert →', `${table}?on_conflict=${onConflict}`, JSON.stringify(data))
   const res  = await fetch(url, {
     method:  'POST',
     headers: {
       ...sbHeaders(serviceKey),
-      'Prefer': `return=representation,resolution=merge-duplicates`,
+      'Prefer': 'resolution=merge-duplicates,return=representation',
     },
     body: JSON.stringify(data),
   })
   const text = await res.text()
+  console.log('[webhook] sbUpsert response status:', res.status, '— body:', text.slice(0, 300))
   if (!res.ok) throw new Error(`Supabase UPSERT failed (${res.status}): ${text}`)
   return JSON.parse(text)
 }
@@ -196,30 +199,34 @@ export default async function handler(req, res) {
           break
         }
 
-        // Fetch the Stripe subscription to get the exact trial_end timestamp
-        let trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+        // Fetch the Stripe subscription to get actual status + trial_end.
+        // Do NOT hardcode 'trialing' — when skipTrial was true the sub is 'active' immediately.
+        let subStatus   = 'trialing'
+        let trialEndsAt = null
         if (secretKey) {
           try {
             const subRes  = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
               headers: { 'Authorization': `Bearer ${secretKey}` },
             })
             const subData = await subRes.json()
-            if (subData.trial_end) {
-              trialEndsAt = new Date(subData.trial_end * 1000).toISOString()
-            }
-            console.log('[webhook] Stripe subscription trial_end:', trialEndsAt)
+            subStatus   = subData.status ?? 'trialing'
+            trialEndsAt = subData.trial_end
+              ? new Date(subData.trial_end * 1000).toISOString()
+              : null
+            console.log('[webhook] Stripe subscription:', { status: subStatus, trial_end: trialEndsAt })
           } catch (err) {
-            console.error('[webhook] Failed to fetch Stripe subscription (using +14d fallback):', err.message)
+            console.error('[webhook] Failed to fetch Stripe subscription — defaulting to trialing:', err.message)
           }
         }
 
         const payload = {
-          id:                     accountId,        // accounts.id = org_id / accountId
+          id:                     accountId,   // must be accounts.id (UUID from accounts table)
           stripe_customer_id:     customerId,
           stripe_subscription_id: subscriptionId,
-          status:                 'trialing',
+          status:                 subStatus,
           trial_ends_at:          trialEndsAt,
         }
+        console.log('[webhook] upsert payload:', JSON.stringify(payload))
 
         try {
           // Upsert into accounts — id is the conflict target
