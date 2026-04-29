@@ -12,10 +12,6 @@ const SPORTS = [
 
 const STEPS = ['Account Type', 'Program Details', 'Confirmation']
 
-function slugify(str) {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-}
-
 // ── Shared input style helpers ────────────────────────────────────────────────
 const inputBase = {
   backgroundColor: '#1a0000',
@@ -418,7 +414,9 @@ export default function Onboarding() {
     }
   }
 
-  // ── Full onboarding submit: account + org + profile, status = trialing ────
+  // ── Full onboarding submit — calls serverless API that uses service role key
+  // to bypass RLS. Direct Supabase client inserts are blocked by RLS since
+  // the user has no profile row yet at this point in the flow.
   async function handleSubmit() {
     setError('')
     setLoading(true)
@@ -427,51 +425,24 @@ export default function Onboarding() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated.')
 
-      const slug = slugify(form.programName)
-      const plan = accountType || 'single'
+      const res  = await fetch('/api/create-account', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          userId:         user.id,
+          email:          user.email ?? '',
+          fullName:       form.fullName,
+          orgName:        form.programName,
+          sport:          form.sport,
+          planType:       accountType || 'single_program',
+          primaryColor:   form.primaryColor,
+          secondaryColor: form.secondaryColor,
+          schoolName:     form.schoolName,
+        }),
+      })
 
-      // 1. Account — trial starts immediately, no card required
-      const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-      const { data: account, error: accountErr } = await supabase
-        .from('accounts')
-        .insert({
-          name:          form.programName,
-          account_type:  plan,
-          plan_type:     'monthly',
-          status:        'trialing',
-          trial_ends_at: trialEndsAt,
-        })
-        .select()
-        .single()
-      if (accountErr) throw accountErr
-
-      // 2. Organization
-      const { data: org, error: orgErr } = await supabase
-        .from('organizations')
-        .insert({
-          account_id:      account.id,
-          name:            form.programName,
-          slug,
-          sport:           form.sport.toLowerCase(),   // DB requires lowercase
-          primary_color:   form.primaryColor,
-          secondary_color: form.secondaryColor,
-        })
-        .select()
-        .single()
-      if (orgErr) throw orgErr
-
-      // 3. Profile — upsert so it never fails if a row was auto-created
-      const { error: profileErr } = await supabase
-        .from('profiles')
-        .upsert({
-          id:         user.id,
-          account_id: account.id,
-          org_id:     org.id,
-          email:      user.email ?? '',
-          role:       'owner',
-          full_name:  form.fullName,
-        }, { onConflict: 'id' })
-      if (profileErr) throw profileErr
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? `Server error (${res.status})`)
 
       // Hard redirect so React Router state can't interfere
       window.location.replace('/dashboard')
