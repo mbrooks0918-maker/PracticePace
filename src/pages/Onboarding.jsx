@@ -137,7 +137,7 @@ function Step1({ accountType, setAccountType, onNext, onSkip, skipping }) {
       <div>
         <h2 className="text-xl font-bold text-white">Choose your plan</h2>
         <p className="text-sm mt-1" style={{ color: '#9a8080' }}>
-          30-day free trial — no credit card required. Pick the plan that fits your program.
+          14-day free trial — no credit card required. Pick the plan that fits your program.
         </p>
       </div>
 
@@ -170,7 +170,7 @@ function Step1({ accountType, setAccountType, onNext, onSkip, skipping }) {
         className="w-full py-3.5 rounded-xl font-black text-white text-base tracking-wide transition-opacity"
         style={{ backgroundColor: '#cc1111' }}
       >
-        Start Free 30-Day Trial →
+        Start Free 14-Day Trial →
       </button>
 
       {/* Test Drive shortcut — pure guest / localStorage only */}
@@ -308,7 +308,7 @@ function Step3({ accountType, form }) {
 
   const rows = [
     { label: 'Plan', value: planLabel },
-    { label: 'Trial', value: '30 days free — no credit card needed' },
+    { label: 'Trial', value: '14 days free — no credit card needed' },
     { label: 'Name', value: form.fullName },
     { label: 'Program', value: form.programName },
     { label: 'Sport', value: form.sport },
@@ -430,14 +430,16 @@ export default function Onboarding() {
       const slug = slugify(form.programName)
       const plan = accountType || 'single'
 
-      // 1. Account
+      // 1. Account — trial starts immediately, no card required
+      const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
       const { data: account, error: accountErr } = await supabase
         .from('accounts')
         .insert({
-          name:         form.programName,
-          account_type: plan,
-          plan_type:    'monthly',
-          status:       'trialing',
+          name:          form.programName,
+          account_type:  plan,
+          plan_type:     'monthly',
+          status:        'trialing',
+          trial_ends_at: trialEndsAt,
         })
         .select()
         .single()

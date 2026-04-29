@@ -113,13 +113,20 @@ export default function Dashboard() {
   const orgColor = org?.primary_color ?? '#cc1111'
 
   // ── Subscription derived state ─────────────────────────────────────────────
-  const subStatus  = subscription?.status ?? null
+  const subStatus   = subscription?.status ?? null
   const trialEndsAt = subscription?.trial_ends_at ? new Date(subscription.trial_ends_at) : null
-  const daysLeft   = trialEndsAt ? Math.ceil((trialEndsAt - new Date()) / 86400000) : null
-  const showTrialBanner = !isGuest && subStatus === 'trialing' && daysLeft !== null
-  const trialUrgent     = showTrialBanner && daysLeft <= 3
-  const showPaywall     = !isGuest && subStatus !== null &&
-                          (subStatus === 'canceled' || subStatus === 'past_due')
+  const now         = new Date()
+  const daysLeft    = trialEndsAt ? Math.ceil((trialEndsAt - now) / 86400000) : null
+  // Trial expired = trial_ends_at has passed and not yet converted to active
+  const trialExpired = trialEndsAt !== null && trialEndsAt < now && subStatus !== 'active'
+  // Subtle amber banner — only shown in the last 3 days of a live trial
+  const showTrialBanner = !isGuest && subStatus === 'trialing' && daysLeft !== null && daysLeft > 0 && daysLeft <= 3
+  // Full-screen paywall: canceled, past_due, or trial ran out
+  const showPaywall = !isGuest && subStatus !== null && (
+    subStatus === 'canceled' ||
+    subStatus === 'past_due' ||
+    trialExpired
+  )
 
   // Default price IDs for subscribe button (single monthly)
   const PRICE_SINGLE_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_SINGLE_MONTHLY
@@ -379,25 +386,20 @@ export default function Dashboard() {
         </button>
       </header>
 
-      {/* ── Trial banner ── */}
+      {/* ── Trial expiry banner — amber, shown only in last 3 days ── */}
       {showTrialBanner && (
         <div
           className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 text-xs font-semibold flex-wrap"
-          style={{
-            backgroundColor: trialUrgent ? '#2a0000' : '#1a0d00',
-            borderBottom:    `1px solid ${trialUrgent ? '#cc1111' : '#3a2000'}`,
-          }}
+          style={{ backgroundColor: '#1a1000', borderBottom: '1px solid #3a2800' }}
         >
-          <span style={{ color: trialUrgent ? '#ff6666' : '#cc8800' }}>
-            {trialUrgent
-              ? `⚠️ Only ${daysLeft} day${daysLeft === 1 ? '' : 's'} left in your trial — subscribe to keep access`
-              : `✦ ${daysLeft} day${daysLeft === 1 ? '' : 's'} left in your trial`}
+          <span style={{ color: '#f59e0b' }}>
+            ⏳ Your trial ends in {daysLeft} day{daysLeft === 1 ? '' : 's'} — subscribe to keep access
           </span>
           <button
             onClick={() => startCheckout(PRICE_SINGLE_MONTHLY)}
             disabled={checkoutLoading}
             className="px-3 py-1.5 rounded-lg font-bold text-white disabled:opacity-50 transition-all active:scale-95"
-            style={{ backgroundColor: trialUrgent ? '#cc1111' : '#8a5500' }}
+            style={{ backgroundColor: '#b45309' }}
           >
             {checkoutLoading ? 'Loading…' : 'Subscribe →'}
           </button>
@@ -421,7 +423,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Subscription paywall ── */}
+      {/* ── Subscription paywall — shown when trial expired, canceled, or past_due ── */}
       {showPaywall && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 text-center"
           style={{ backgroundColor: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(8px)' }}>
@@ -429,14 +431,27 @@ export default function Dashboard() {
             <div style={{ fontSize: 56 }}>🔒</div>
             <div>
               <h2 className="text-2xl font-black text-white mb-2">
-                {subStatus === 'past_due' ? 'Payment failed' : 'Subscription ended'}
+                {subStatus === 'past_due'
+                  ? 'Payment failed'
+                  : trialExpired
+                    ? 'Your free trial has ended'
+                    : 'Subscription ended'}
               </h2>
               <p className="text-sm leading-relaxed" style={{ color: '#9a8080' }}>
                 {subStatus === 'past_due'
-                  ? 'Your last payment didn\'t go through. Update your payment method to restore access.'
-                  : 'Your subscription has ended. Subscribe to keep practicing with PracticePace.'}
+                  ? "Your last payment didn't go through. Update your payment method to restore access."
+                  : trialExpired
+                    ? 'Your 14-day free trial is over. Subscribe to keep access to PracticePace.'
+                    : 'Your subscription has ended. Subscribe to keep practicing with PracticePace.'}
               </p>
             </div>
+
+            {checkoutError && (
+              <p className="text-xs px-4 py-2 rounded-lg w-full text-left"
+                style={{ backgroundColor: '#2a0000', color: '#ff6666', border: '1px solid #4a0000' }}>
+                ⚠ {checkoutError}
+              </p>
+            )}
 
             <div className="flex flex-col gap-3 w-full">
               <button

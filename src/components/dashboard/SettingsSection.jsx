@@ -642,101 +642,170 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
 
           {/* ── Billing ── */}
           <Section title="Subscription & Billing">
-            {!subscription ? (
-              <div className="flex flex-col gap-3">
-                <p className="text-sm" style={{ color: '#9a8080' }}>
-                  No active subscription. Start a free 14-day trial to unlock all features.
-                </p>
-                <button
-                  onClick={() => onStartCheckout?.(import.meta.env.VITE_STRIPE_PRICE_SINGLE_MONTHLY)}
-                  disabled={checkoutLoading}
-                  className="py-3 rounded-lg text-sm font-bold text-white disabled:opacity-50"
-                  style={{ backgroundColor: orgColor }}
-                >
-                  {checkoutLoading ? 'Loading…' : 'Start Free Trial →'}
-                </button>
-                {checkoutError && (
-                  <p className="text-xs p-3 rounded-lg leading-relaxed"
-                    style={{ backgroundColor: '#2a0000', color: '#ff6666', border: '1px solid #4a0000' }}>
-                    ⚠ {checkoutError}
+            {(() => {
+              const sub      = subscription
+              const status   = sub?.status ?? null
+              const trialEnd = sub?.trial_ends_at ? new Date(sub.trial_ends_at) : null
+              const now      = new Date()
+              const daysLeft = trialEnd ? Math.ceil((trialEnd - now) / 86400000) : null
+              const trialExpired = trialEnd && trialEnd < now && status !== 'active'
+              const hasStripe = !!(sub?.stripe_customer_id)
+              const statusMeta = STATUS_LABELS[status] ?? STATUS_LABELS.canceled
+
+              // ── No account row yet (shouldn't normally happen) ────────────
+              if (!sub) {
+                return (
+                  <p className="text-sm" style={{ color: '#9a8080' }}>
+                    Account not found. Please reload or contact support.
                   </p>
-                )}
-              </div>
-            ) : (() => {
-              const sub     = subscription
-              const status  = STATUS_LABELS[sub.status] ?? STATUS_LABELS.canceled
-              const planLabel = PRICE_LABELS[sub.price_id] ?? (
-                sub.tier === 'school' ? 'School Plan' : 'Single Program'
-              )
-              const trialEnd = sub.trial_ends_at
-                ? new Date(sub.trial_ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                : null
-              const isSchool = sub.tier === 'school'
-              const isSingle = !isSchool
+                )
+              }
 
-              return (
-                <div className="flex flex-col gap-4">
-                  {/* Plan + status */}
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Plan</span>
-                      <span className="text-sm font-semibold text-white">{planLabel}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Status</span>
-                      <span
-                        className="text-xs font-bold px-2.5 py-1 rounded-full"
-                        style={{ backgroundColor: status.bg, color: status.color, border: `1px solid ${status.border}` }}
-                      >
-                        {status.label}
-                      </span>
-                    </div>
-                    {trialEnd && sub.status === 'trialing' && (
+              // ── Active trial ───────────────────────────────────────────────
+              if (status === 'trialing' && !trialExpired) {
+                const trialEndFmt = trialEnd?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                return (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Trial ends</span>
-                        <span className="text-sm text-white">{trialEnd}</span>
+                        <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Status</span>
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+                          style={{ backgroundColor: statusMeta.bg, color: statusMeta.color, border: `1px solid ${statusMeta.border}` }}>
+                          {statusMeta.label}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      {daysLeft !== null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Days left</span>
+                          <span className="text-sm font-semibold" style={{ color: daysLeft <= 3 ? '#f59e0b' : '#fff' }}>
+                            {daysLeft > 0 ? `${daysLeft} day${daysLeft === 1 ? '' : 's'}` : 'Expires today'}
+                          </span>
+                        </div>
+                      )}
+                      {trialEndFmt && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Trial ends</span>
+                          <span className="text-sm text-white">{trialEndFmt}</span>
+                        </div>
+                      )}
+                    </div>
 
-                  {/* Actions */}
-                  <div className="flex flex-col gap-2 pt-1" style={{ borderTop: '1px solid #2a0000' }}>
-                    {/* Manage billing portal */}
-                    {sub.stripe_customer_id && (
+                    <div className="flex flex-col gap-2 pt-1" style={{ borderTop: '1px solid #2a0000' }}>
+                      <p className="text-xs" style={{ color: '#9a8080' }}>
+                        Subscribe now to keep access after your trial. Your card won't be charged until the trial ends.
+                      </p>
                       <button
-                        onClick={openBillingPortal}
-                        disabled={portalLoading}
+                        onClick={() => onStartCheckout?.(import.meta.env.VITE_STRIPE_PRICE_SINGLE_MONTHLY)}
+                        disabled={checkoutLoading}
                         className="py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50"
                         style={{ backgroundColor: orgColor }}
                       >
-                        {portalLoading ? 'Opening…' : 'Manage Billing'}
+                        {checkoutLoading ? 'Loading…' : 'Subscribe →'}
                       </button>
-                    )}
-
-                    {/* Upgrade to School (only shown on single plan) */}
-                    {isSingle && sub.status !== 'canceled' && (
-                      <button
-                        onClick={() => onStartCheckout?.(import.meta.env.VITE_STRIPE_PRICE_SCHOOL_MONTHLY)}
-                        disabled={checkoutLoading}
-                        className="py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50"
-                        style={{ border: `2px solid ${orgColor}`, backgroundColor: 'transparent', color: orgColor }}
-                      >
-                        {checkoutLoading ? 'Loading…' : 'Upgrade to School Plan'}
-                      </button>
-                    )}
-
-                    {portalError && (
-                      <p className="text-xs p-2 rounded-lg" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
-                        {portalError}
-                      </p>
-                    )}
-                    {checkoutError && (
-                      <p className="text-xs p-2 rounded-lg leading-relaxed"
-                        style={{ backgroundColor: '#2a0000', color: '#ff6666', border: '1px solid #4a0000' }}>
-                        ⚠ {checkoutError}
-                      </p>
-                    )}
+                      {checkoutError && (
+                        <p className="text-xs p-2 rounded-lg leading-relaxed"
+                          style={{ backgroundColor: '#2a0000', color: '#ff6666', border: '1px solid #4a0000' }}>
+                          ⚠ {checkoutError}
+                        </p>
+                      )}
+                    </div>
                   </div>
+                )
+              }
+
+              // ── Active subscription ────────────────────────────────────────
+              if (status === 'active') {
+                const planLabel = PRICE_LABELS[sub.price_id] ?? (
+                  sub.account_type === 'school' ? 'School Plan' : 'Single Program'
+                )
+                const isSingle = sub.account_type !== 'school'
+                return (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Plan</span>
+                        <span className="text-sm font-semibold text-white">{planLabel}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Status</span>
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+                          style={{ backgroundColor: statusMeta.bg, color: statusMeta.color, border: `1px solid ${statusMeta.border}` }}>
+                          {statusMeta.label}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 pt-1" style={{ borderTop: '1px solid #2a0000' }}>
+                      {hasStripe && (
+                        <button
+                          onClick={openBillingPortal}
+                          disabled={portalLoading}
+                          className="py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50"
+                          style={{ backgroundColor: orgColor }}
+                        >
+                          {portalLoading ? 'Opening…' : 'Manage Billing'}
+                        </button>
+                      )}
+                      {isSingle && (
+                        <button
+                          onClick={() => onStartCheckout?.(import.meta.env.VITE_STRIPE_PRICE_SCHOOL_MONTHLY)}
+                          disabled={checkoutLoading}
+                          className="py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
+                          style={{ border: `2px solid ${orgColor}`, backgroundColor: 'transparent', color: orgColor }}
+                        >
+                          {checkoutLoading ? 'Loading…' : 'Upgrade to School Plan'}
+                        </button>
+                      )}
+                      {portalError && (
+                        <p className="text-xs p-2 rounded-lg" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
+                          {portalError}
+                        </p>
+                      )}
+                      {checkoutError && (
+                        <p className="text-xs p-2 rounded-lg leading-relaxed"
+                          style={{ backgroundColor: '#2a0000', color: '#ff6666', border: '1px solid #4a0000' }}>
+                          ⚠ {checkoutError}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+
+              // ── Trial expired, canceled, or past_due ───────────────────────
+              const msg = status === 'past_due'
+                ? "Your last payment didn't go through."
+                : trialExpired
+                  ? 'Your free trial has ended.'
+                  : 'Your subscription has ended.'
+
+              return (
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm" style={{ color: '#9a8080' }}>{msg} Subscribe to restore access.</p>
+                  <button
+                    onClick={() => onStartCheckout?.(import.meta.env.VITE_STRIPE_PRICE_SINGLE_MONTHLY)}
+                    disabled={checkoutLoading}
+                    className="py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50"
+                    style={{ backgroundColor: orgColor }}
+                  >
+                    {checkoutLoading ? 'Loading…' : 'Subscribe →'}
+                  </button>
+                  {hasStripe && status === 'past_due' && (
+                    <button
+                      onClick={openBillingPortal}
+                      disabled={portalLoading}
+                      className="py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
+                      style={{ border: `1px solid #2a0000`, backgroundColor: 'transparent', color: '#9a8080' }}
+                    >
+                      {portalLoading ? 'Opening…' : 'Update Payment Method'}
+                    </button>
+                  )}
+                  {(checkoutError || portalError) && (
+                    <p className="text-xs p-2 rounded-lg leading-relaxed"
+                      style={{ backgroundColor: '#2a0000', color: '#ff6666', border: '1px solid #4a0000' }}>
+                      ⚠ {checkoutError || portalError}
+                    </p>
+                  )}
                 </div>
               )
             })()}
