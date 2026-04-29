@@ -716,9 +716,9 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
               // ── Active subscription ────────────────────────────────────────
               if (status === 'active') {
                 const planLabel = PRICE_LABELS[sub.price_id] ?? (
-                  sub.account_type === 'school' ? 'School Plan' : 'Single Program'
+                  sub.plan_type === 'school' ? 'School — All Programs' : 'Single Program'
                 )
-                const isSingle = sub.account_type !== 'school'
+                const isSingle = sub.plan_type !== 'school'
                 return (
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-2">
