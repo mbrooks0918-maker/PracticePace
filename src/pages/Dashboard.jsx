@@ -16,6 +16,7 @@ import ScoreboardSection from '../components/dashboard/ScoreboardSection'
 import VideoSection      from '../components/dashboard/VideoSection'
 import SettingsSection   from '../components/dashboard/SettingsSection'
 import PlaybookSection   from '../components/dashboard/PlaybookSection'
+import PlanSelectModal   from '../components/dashboard/PlanSelectModal'
 
 import {
   getGuestScripts,
@@ -68,6 +69,7 @@ export default function Dashboard() {
   const [subscription, setSubscription] = useState(null)   // subscriptions row or null
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutError,   setCheckoutError]   = useState('')
+  const [showPlanModal,   setShowPlanModal]   = useState(false)
 
   // Safety net: if loadAll() never finishes, force-unblock after 3 s
   useEffect(() => {
@@ -130,10 +132,6 @@ export default function Dashboard() {
     subStatus === 'past_due' ||
     trialExpired
   )
-
-  // Default price IDs for subscribe button (single monthly)
-  const PRICE_SINGLE_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_SINGLE_MONTHLY
-  const PRICE_SCHOOL_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_SCHOOL_MONTHLY
 
   // Use user?.id (stable string) not user (new object every token refresh).
   // Without this, every token refresh fires loadAll() and makes the app
@@ -239,11 +237,18 @@ export default function Dashboard() {
     }
   }
 
-  // ── Stripe checkout helper ─────────────────────────────────────────────────
+  // ── Open plan selector modal ───────────────────────────────────────────────
+  // All "Subscribe" entry points open the modal first so the coach can choose
+  // their plan before being sent to Stripe.
+  function openPlanModal() {
+    setCheckoutError('')
+    setShowPlanModal(true)
+  }
+
+  // ── Stripe checkout — called by PlanSelectModal after plan is chosen ───────
   async function startCheckout(priceId) {
     setCheckoutError('')
 
-    // Guard: org and user must be loaded
     if (!org?.id) {
       setCheckoutError('Organization not loaded — please wait and try again.')
       console.warn('[Dashboard] startCheckout: org.id is missing', { org, user })
@@ -260,12 +265,16 @@ export default function Dashboard() {
       return
     }
 
-    console.log('[Dashboard] startCheckout → calling /api/stripe-checkout', {
-      priceId,
-      accountId: org.id,
-      email:     user.email,
-      orgName:   org.name,
-    })
+    // skipTrial = coach is converting from an existing in-app trial.
+    // Stripe will show "Subscribe" not "Start trial" and won't add another
+    // 14-day grace period on top of the one they already received.
+    const trialStillActive =
+      subscription?.status === 'trialing' &&
+      subscription?.trial_ends_at &&
+      new Date(subscription.trial_ends_at) > new Date()
+    const skipTrial = trialStillActive
+
+    console.log('[Dashboard] startCheckout →', { priceId, skipTrial, accountId: org.id })
 
     setCheckoutLoading(true)
     try {
@@ -277,6 +286,7 @@ export default function Dashboard() {
           accountId: org.id,
           email:     user.email,
           orgName:   org.name ?? '',
+          skipTrial,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -399,7 +409,7 @@ export default function Dashboard() {
             ⏳ Your trial ends in {daysLeft} day{daysLeft === 1 ? '' : 's'} — subscribe to keep access
           </span>
           <button
-            onClick={() => startCheckout(PRICE_SINGLE_MONTHLY)}
+            onClick={openPlanModal}
             disabled={checkoutLoading}
             className="px-3 py-1.5 rounded-lg font-bold text-white disabled:opacity-50 transition-all active:scale-95"
             style={{ backgroundColor: '#b45309' }}
@@ -458,20 +468,12 @@ export default function Dashboard() {
 
             <div className="flex flex-col gap-3 w-full">
               <button
-                onClick={() => startCheckout(PRICE_SINGLE_MONTHLY)}
+                onClick={openPlanModal}
                 disabled={checkoutLoading}
                 className="w-full py-4 rounded-xl text-base font-black text-white disabled:opacity-50"
                 style={{ backgroundColor: '#cc1111', boxShadow: '0 4px 24px #cc111166' }}
               >
-                {checkoutLoading ? 'Loading…' : 'Subscribe — Single Program $79/mo'}
-              </button>
-              <button
-                onClick={() => startCheckout(PRICE_SCHOOL_MONTHLY)}
-                disabled={checkoutLoading}
-                className="w-full py-4 rounded-xl text-base font-black text-white disabled:opacity-50"
-                style={{ border: '2px solid #cc1111', backgroundColor: 'transparent' }}
-              >
-                {checkoutLoading ? 'Loading…' : 'Subscribe — School $199/mo'}
+                {checkoutLoading ? 'Loading…' : 'Choose a plan →'}
               </button>
               <button
                 onClick={() => navigate('/pricing')}
@@ -545,7 +547,7 @@ export default function Dashboard() {
               orgColor={orgColor}
               onOrgUpdate={handleOrgUpdate}
               subscription={subscription}
-              onStartCheckout={startCheckout}
+              onStartCheckout={openPlanModal}
               checkoutLoading={checkoutLoading}
               checkoutError={checkoutError}
             />
@@ -617,6 +619,16 @@ export default function Dashboard() {
           )
         })}
       </nav>
+
+      {/* ── Plan selector modal ── */}
+      {showPlanModal && (
+        <PlanSelectModal
+          onConfirm={priceId => startCheckout(priceId)}
+          onClose={() => { setShowPlanModal(false); setCheckoutError('') }}
+          loading={checkoutLoading}
+          error={checkoutError}
+        />
+      )}
 
     </div>
   )

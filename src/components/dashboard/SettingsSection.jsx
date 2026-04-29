@@ -695,7 +695,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
                         Subscribe now to keep access after your trial. Your card won't be charged until the trial ends.
                       </p>
                       <button
-                        onClick={() => onStartCheckout?.(import.meta.env.VITE_STRIPE_PRICE_SINGLE_MONTHLY)}
+                        onClick={() => onStartCheckout?.()}
                         disabled={checkoutLoading}
                         className="py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50"
                         style={{ backgroundColor: orgColor }}
@@ -748,7 +748,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
                       )}
                       {isSingle && (
                         <button
-                          onClick={() => onStartCheckout?.(import.meta.env.VITE_STRIPE_PRICE_SCHOOL_MONTHLY)}
+                          onClick={() => onStartCheckout?.()}
                           disabled={checkoutLoading}
                           className="py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
                           style={{ border: `2px solid ${orgColor}`, backgroundColor: 'transparent', color: orgColor }}
@@ -783,7 +783,7 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
                 <div className="flex flex-col gap-3">
                   <p className="text-sm" style={{ color: '#9a8080' }}>{msg} Subscribe to restore access.</p>
                   <button
-                    onClick={() => onStartCheckout?.(import.meta.env.VITE_STRIPE_PRICE_SINGLE_MONTHLY)}
+                    onClick={() => onStartCheckout?.()}
                     disabled={checkoutLoading}
                     className="py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50"
                     style={{ backgroundColor: orgColor }}

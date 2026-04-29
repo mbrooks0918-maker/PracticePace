@@ -64,12 +64,13 @@ export default async function handler(req) {
     return json({ error: 'Invalid request body' }, 400)
   }
 
-  const { priceId, accountId, email, orgName } = body
+  const { priceId, accountId, email, orgName, skipTrial } = body
   console.log('[stripe-checkout] Incoming request:', {
     priceId,
     accountId: accountId ?? '(null)',
     email:     email     ?? '(null)',
     orgName:   orgName   ?? '(null)',
+    skipTrial: !!skipTrial,
   })
 
   // ── Validate required fields ─────────────────────────────────────────────────
@@ -108,13 +109,15 @@ export default async function handler(req) {
     }
 
     // ── Create Checkout Session ───────────────────────────────────────────────
-    console.log('[stripe-checkout] Creating Checkout Session for priceId:', priceId)
+    // skipTrial = true when the coach is converting from an in-app trial.
+    // Omitting trial_period_days means Stripe shows "Subscribe" not "Start trial"
+    // and charges immediately (or at next billing cycle if prorated).
+    console.log('[stripe-checkout] Creating Checkout Session — skipTrial:', !!skipTrial)
     const params = new URLSearchParams({
-      customer:                              customerId,
-      mode:                                  'subscription',
-      'line_items[0][price]':               priceId,
-      'line_items[0][quantity]':            '1',
-      'subscription_data[trial_period_days]': '14',
+      customer:                                  customerId,
+      mode:                                      'subscription',
+      'line_items[0][price]':                   priceId,
+      'line_items[0][quantity]':                '1',
       'subscription_data[metadata][accountId]': accountId,
       'subscription_data[metadata][priceId]':   priceId,
       success_url: 'https://practicepace.app/dashboard?subscription=success',
@@ -123,6 +126,12 @@ export default async function handler(req) {
       'metadata[orgName]':   orgName ?? '',
       'metadata[priceId]':   priceId,
     })
+
+    // Only add trial days for brand-new signups with no prior in-app trial
+    if (!skipTrial) {
+      params.set('subscription_data[trial_period_days]', '14')
+      console.log('[stripe-checkout] Adding 14-day trial to session')
+    }
 
     const session = await stripePost('/checkout/sessions', params, secretKey)
     console.log('[stripe-checkout] Checkout Session created:', session.id, '→', session.url ? 'has URL' : 'NO URL')
