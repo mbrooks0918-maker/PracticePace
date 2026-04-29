@@ -41,11 +41,11 @@ const LogoutIcon = () => <Ico size={16}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0
 const NAV = [
   { id: 'practice',   label: 'Practice',   Icon: ClockIcon },
   { id: 'scripts',    label: 'Scripts',    Icon: FileIcon },
-  { id: 'playbook',   label: 'Playbook',   Icon: BookIcon },
   { id: 'scoreboard', label: 'Scoreboard', Icon: ListIcon },
   { id: 'video',      label: 'Video',      Icon: VideoIcon },
   { id: 'audio',      label: 'Music',      Icon: MusicIcon },
   { id: 'settings',   label: 'Settings',   Icon: GearIcon },
+  { id: 'playbook',   label: 'Playbook',   Icon: BookIcon },
 ]
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
