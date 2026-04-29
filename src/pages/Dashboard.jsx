@@ -484,13 +484,6 @@ export default function Dashboard() {
               >
                 {checkoutLoading ? 'Loading…' : 'Choose a plan →'}
               </button>
-              <button
-                onClick={() => navigate('/pricing')}
-                className="text-sm underline mt-1 transition-opacity hover:opacity-70"
-                style={{ color: '#9a8080' }}
-              >
-                View all plans →
-              </button>
             </div>
 
             <button onClick={signOut}
