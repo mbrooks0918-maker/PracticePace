@@ -49,37 +49,66 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST')    return json({ error: 'Method not allowed' }, 405)
 
+  // ── Env check ───────────────────────────────────────────────────────────────
   const secretKey = process.env.STRIPE_SECRET_KEY
+  console.log('[stripe-checkout] STRIPE_SECRET_KEY defined:', !!secretKey)
   if (!secretKey) {
-    console.error('[stripe-checkout] Missing STRIPE_SECRET_KEY')
-    return json({ error: 'Server misconfigured — contact support.' }, 500)
+    console.error('[stripe-checkout] STRIPE_SECRET_KEY is missing — set it in Vercel env vars')
+    return json({ error: 'Server misconfigured — STRIPE_SECRET_KEY not set. Contact support.' }, 500)
   }
 
+  // ── Parse body ───────────────────────────────────────────────────────────────
   let body
-  try { body = await req.json() } catch { return json({ error: 'Invalid request body' }, 400) }
+  try { body = await req.json() } catch (e) {
+    console.error('[stripe-checkout] Failed to parse request body:', e.message)
+    return json({ error: 'Invalid request body' }, 400)
+  }
 
   const { priceId, accountId, email, orgName } = body
-  if (!priceId || !accountId || !email) {
-    return json({ error: 'priceId, accountId, and email are required' }, 400)
+  console.log('[stripe-checkout] Incoming request:', {
+    priceId,
+    accountId: accountId ?? '(null)',
+    email:     email     ?? '(null)',
+    orgName:   orgName   ?? '(null)',
+  })
+
+  // ── Validate required fields ─────────────────────────────────────────────────
+  if (!priceId || priceId === 'undefined') {
+    console.error('[stripe-checkout] priceId is missing or undefined — check VITE_STRIPE_PRICE_* env vars on the client')
+    return json({ error: 'priceId is required — Stripe price environment variables may not be configured.' }, 400)
+  }
+  if (!accountId || accountId === 'undefined') {
+    console.error('[stripe-checkout] accountId is missing — org may not be loaded yet')
+    return json({ error: 'accountId is required — please reload and try again.' }, 400)
+  }
+  if (!email) {
+    console.error('[stripe-checkout] email is missing')
+    return json({ error: 'email is required' }, 400)
   }
 
   try {
     // ── Find or create Stripe customer ────────────────────────────────────────
+    console.log('[stripe-checkout] Looking up Stripe customer for:', email)
     const customers = await stripeGet(
       `/customers?email=${encodeURIComponent(email)}&limit=1`,
       secretKey
     )
     let customerId = customers.data?.[0]?.id
 
-    if (!customerId) {
+    if (customerId) {
+      console.log('[stripe-checkout] Found existing Stripe customer:', customerId)
+    } else {
+      console.log('[stripe-checkout] No existing customer — creating new one')
       const createParams = new URLSearchParams({ email })
       createParams.set('metadata[accountId]', accountId)
       if (orgName) createParams.set('metadata[orgName]', orgName)
       const customer = await stripePost('/customers', createParams, secretKey)
       customerId = customer.id
+      console.log('[stripe-checkout] Created Stripe customer:', customerId)
     }
 
     // ── Create Checkout Session ───────────────────────────────────────────────
+    console.log('[stripe-checkout] Creating Checkout Session for priceId:', priceId)
     const params = new URLSearchParams({
       customer:                              customerId,
       mode:                                  'subscription',
@@ -96,9 +125,10 @@ export default async function handler(req) {
     })
 
     const session = await stripePost('/checkout/sessions', params, secretKey)
+    console.log('[stripe-checkout] Checkout Session created:', session.id, '→', session.url ? 'has URL' : 'NO URL')
     return json({ url: session.url })
   } catch (err) {
-    console.error('[stripe-checkout]', err.message)
+    console.error('[stripe-checkout] Error:', err.message)
     return json({ error: err.message ?? 'Checkout session creation failed' }, 500)
   }
 }

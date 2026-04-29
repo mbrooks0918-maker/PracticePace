@@ -64,6 +64,7 @@ export default function Dashboard() {
   const [loading, setLoading]           = useState(true)
   const [subscription, setSubscription] = useState(null)   // subscriptions row or null
   const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [checkoutError,   setCheckoutError]   = useState('')
 
   // Safety net: if loadAll() never finishes, force-unblock after 3 s
   useEffect(() => {
@@ -204,7 +205,32 @@ export default function Dashboard() {
 
   // ── Stripe checkout helper ─────────────────────────────────────────────────
   async function startCheckout(priceId) {
-    if (!org?.id || !user?.email) return
+    setCheckoutError('')
+
+    // Guard: org and user must be loaded
+    if (!org?.id) {
+      setCheckoutError('Organization not loaded — please wait and try again.')
+      console.warn('[Dashboard] startCheckout: org.id is missing', { org, user })
+      return
+    }
+    if (!user?.email) {
+      setCheckoutError('User email not found — please reload and try again.')
+      console.warn('[Dashboard] startCheckout: user.email is missing', { user })
+      return
+    }
+    if (!priceId || priceId === 'undefined') {
+      setCheckoutError('Stripe price ID is not configured — check VITE_STRIPE_PRICE_* environment variables.')
+      console.error('[Dashboard] startCheckout: priceId is invalid:', priceId)
+      return
+    }
+
+    console.log('[Dashboard] startCheckout → calling /api/stripe-checkout', {
+      priceId,
+      accountId: org.id,
+      email:     user.email,
+      orgName:   org.name,
+    })
+
     setCheckoutLoading(true)
     try {
       const res = await fetch('/api/stripe-checkout', {
@@ -217,11 +243,14 @@ export default function Dashboard() {
           orgName:   org.name ?? '',
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Checkout failed')
+      const data = await res.json().catch(() => ({}))
+      console.log('[Dashboard] startCheckout ← API response', res.status, data)
+      if (!res.ok) throw new Error(data.error ?? `Server error (${res.status})`)
+      if (!data.url) throw new Error('No redirect URL returned from checkout API')
       window.location.href = data.url
     } catch (err) {
       console.error('[Dashboard] startCheckout error:', err.message)
+      setCheckoutError(err.message ?? 'Checkout failed — please try again.')
       setCheckoutLoading(false)
     }
   }
@@ -470,6 +499,7 @@ export default function Dashboard() {
               subscription={subscription}
               onStartCheckout={startCheckout}
               checkoutLoading={checkoutLoading}
+              checkoutError={checkoutError}
             />
           )}
 

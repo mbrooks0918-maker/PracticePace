@@ -71,7 +71,7 @@ const STATUS_LABELS = {
 }
 
 export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
-  subscription, onStartCheckout, checkoutLoading }) {
+  subscription, onStartCheckout, checkoutLoading, checkoutError }) {
   const { user, loading: authLoading } = useAuth()
 
   // Form only tracks name + sport — color pickers removed (not needed by coaches)
@@ -655,6 +655,12 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
                 >
                   {checkoutLoading ? 'Loading…' : 'Start Free Trial →'}
                 </button>
+                {checkoutError && (
+                  <p className="text-xs p-3 rounded-lg leading-relaxed"
+                    style={{ backgroundColor: '#2a0000', color: '#ff6666', border: '1px solid #4a0000' }}>
+                    ⚠ {checkoutError}
+                  </p>
+                )}
               </div>
             ) : (() => {
               const sub     = subscription
@@ -722,6 +728,12 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
                     {portalError && (
                       <p className="text-xs p-2 rounded-lg" style={{ backgroundColor: '#2a0000', color: '#ff6666' }}>
                         {portalError}
+                      </p>
+                    )}
+                    {checkoutError && (
+                      <p className="text-xs p-2 rounded-lg leading-relaxed"
+                        style={{ backgroundColor: '#2a0000', color: '#ff6666', border: '1px solid #4a0000' }}>
+                        ⚠ {checkoutError}
                       </p>
                     )}
                   </div>
