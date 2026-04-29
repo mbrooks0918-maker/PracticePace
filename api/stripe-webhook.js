@@ -219,21 +219,24 @@ export default async function handler(req, res) {
           }
         }
 
-        const payload = {
-          id:                     accountId,   // must be accounts.id (UUID from accounts table)
+        // The accounts row already exists (created during onboarding).
+        // PATCH only the Stripe fields — never touch name or other required columns.
+        const patch = {
           stripe_customer_id:     customerId,
           stripe_subscription_id: subscriptionId,
           status:                 subStatus,
           trial_ends_at:          trialEndsAt,
         }
-        console.log('[webhook] upsert payload:', JSON.stringify(payload))
+        console.log('[webhook] patching account', accountId, JSON.stringify(patch))
 
         try {
-          // Upsert into accounts — id is the conflict target
-          const rows = await sbUpsert('accounts', payload, 'id', supabaseUrl, serviceKey)
-          console.log('[webhook] checkout.session.completed: upserted account rows:', rows.length, '— accountId:', accountId)
+          const rows = await sbPatch('accounts', `id=eq.${accountId}`, patch, supabaseUrl, serviceKey)
+          console.log('[webhook] checkout.session.completed: patched account rows:', rows.length, '— accountId:', accountId)
+          if (rows.length === 0) {
+            console.warn('[webhook] PATCH matched 0 rows — accountId may not exist in accounts table:', accountId)
+          }
         } catch (dbErr) {
-          console.error('[webhook] DB upsert failed for checkout.session.completed:', dbErr.message)
+          console.error('[webhook] DB patch failed for checkout.session.completed:', dbErr.message)
         }
         break
       }
