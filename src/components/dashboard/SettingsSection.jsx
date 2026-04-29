@@ -74,10 +74,11 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
   subscription, onStartCheckout, checkoutLoading, checkoutError }) {
   const { user, loading: authLoading } = useAuth()
 
-  // Form only tracks name + sport — color pickers removed (not needed by coaches)
   const [form, setForm] = useState({
-    name:  org?.name  ?? '',
-    sport: (org?.sport ?? '').toLowerCase(),   // normalize so it always matches option values
+    name:           org?.name  ?? '',
+    sport:          (org?.sport ?? '').toLowerCase(),
+    primaryColor:   org?.primary_color   ?? '#cc1111',
+    secondaryColor: org?.secondary_color ?? '#ffffff',
   })
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
@@ -111,12 +112,14 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
   useEffect(() => {
     if (org?.id) {
       setForm({
-        name:  org.name  ?? '',
-        sport: (org.sport ?? '').toLowerCase(),   // normalize to match option values
+        name:           org.name  ?? '',
+        sport:          (org.sport ?? '').toLowerCase(),
+        primaryColor:   org.primary_color   ?? '#cc1111',
+        secondaryColor: org.secondary_color ?? '#ffffff',
       })
       loadCoaches()
     }
-  }, [org?.id, org?.name, org?.sport])
+  }, [org?.id, org?.name, org?.sport, org?.primary_color, org?.secondary_color])
 
   async function loadCoaches() {
     if (!org?.id) return
@@ -136,11 +139,22 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
         // ── Existing org: update ──────────────────────────────────────────────
         const { error: err } = await supabase
           .from('organizations')
-          .update({ name: form.name.trim(), sport: form.sport })
+          .update({
+            name:            form.name.trim(),
+            sport:           form.sport,
+            primary_color:   form.primaryColor,
+            secondary_color: form.secondaryColor,
+          })
           .eq('id', org.id)
         if (err) { setSaveErr(err.message); return }
         setSaved(true)
-        onOrgUpdate?.({ ...org, name: form.name.trim(), sport: form.sport })
+        onOrgUpdate?.({
+          ...org,
+          name:            form.name.trim(),
+          sport:           form.sport,
+          primary_color:   form.primaryColor,
+          secondary_color: form.secondaryColor,
+        })
       } else {
         // ── No org yet: create org + profile (first-time setup) ──────────────
         const userId = user?.id
@@ -398,6 +412,47 @@ export default function SettingsSection({ org, profile, orgColor, onOrgUpdate,
                 <option value="">Select sport…</option>
                 {SPORTS.map(s => <option key={s} value={s.toLowerCase()}>{s}</option>)}
               </select>
+            </div>
+
+            {/* Color pickers */}
+            <div className="flex gap-3">
+              {[
+                { key: 'primaryColor',   label: 'Primary Color' },
+                { key: 'secondaryColor', label: 'Secondary Color' },
+              ].map(({ key, label }) => (
+                <div key={key} className="flex-1 flex flex-col gap-1">
+                  <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9a8080' }}>
+                    {label}
+                  </label>
+                  <div
+                    className="flex items-center gap-2 rounded-lg px-3 py-2"
+                    style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000' }}
+                  >
+                    <input
+                      type="color"
+                      value={form[key]}
+                      onChange={e => upd(key, e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer shrink-0"
+                      style={{ backgroundColor: 'transparent', border: '1px solid #3a0000', padding: '1px' }}
+                    />
+                    <span className="text-xs font-mono" style={{ color: '#9a8080' }}>
+                      {form[key]}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Live preview */}
+            <div
+              className="flex items-center justify-center rounded-lg px-4 py-3 text-sm font-bold"
+              style={{
+                backgroundColor: form.primaryColor,
+                color:           form.secondaryColor,
+                border:          '1px solid #2a0000',
+              }}
+            >
+              {form.name.trim() || 'Program Name Preview'}
             </div>
 
             {saveErr && (
