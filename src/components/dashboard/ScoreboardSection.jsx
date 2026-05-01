@@ -233,21 +233,36 @@ function FootballScoreboard({ orgColor }) {
   return (
     <div className="flex-1 flex flex-col gap-2 p-3 overflow-hidden min-h-0">
 
-      {/* ── ROW 1: Quarter left | Game clock center | Play clock box right ── */}
+      {/* ── ROW 1: Down/Distance/BallOn left | Game clock center | Quarter right ── */}
       <div className="shrink-0 flex gap-3 items-stretch">
 
-        {/* Quarter selector — left */}
-        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl px-5 py-3 shrink-0"
+        {/* Down / Distance / Ball On — left */}
+        <div className="flex flex-col justify-between gap-2.5 rounded-2xl px-4 py-3 shrink-0"
           style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
-          <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Quarter</span>
-          <select
-            value={quarter}
-            onChange={e => { setQuarter(Number(e.target.value)); setGameSecs(15*60); setGameRun(false) }}
-            className="rounded-xl px-4 py-2.5 text-sm font-bold outline-none"
-            style={{ backgroundColor: '#1a0000', border: '1px solid #2a0000', color: '#fff' }}
-          >
-            {QUARTERS.map((l,i) => <option key={l} value={i}>{l}</option>)}
-          </select>
+
+          {/* Down buttons */}
+          <div className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Down</span>
+            <div className="flex gap-1">
+              {DOWNS.map((d,i) => (
+                <button key={d} onClick={() => setDown(i)}
+                  className="w-10 h-8 rounded-lg text-xs font-bold transition-all"
+                  style={{
+                    backgroundColor: down===i ? orgColor : '#1a0000',
+                    border:          `1px solid ${down===i ? orgColor : '#2a0000'}`,
+                    color:           down===i ? '#fff' : '#9a8080',
+                  }}>
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* & Yds */}
+          <PlusMinusRow label="& yds" value={distance} onChange={setDistance} min={1} max={99} />
+
+          {/* Ball On */}
+          <PlusMinusRow label="Ball on" value={ballOn} onChange={setBallOn} min={1} max={99} />
         </div>
 
         {/* Game clock — center, dominant */}
@@ -259,77 +274,25 @@ function FootballScoreboard({ orgColor }) {
           )}
         </div>
 
-        {/* Play clock box — right, mirrors basketball shot clock */}
-        {(() => {
-          const playWarn = playSecs <= 5
-          return (
-            <div className="flex flex-col items-center justify-between rounded-2xl px-4 py-3 shrink-0"
-              style={{
-                backgroundColor: '#0d0800',
-                border: `2px solid ${playWarn ? '#ef4444' : SHOT_AMBER}44`,
-                boxShadow: playWarn ? '0 0 16px #ef444433' : `0 0 16px ${SHOT_AMBER}22`,
-                minWidth: 160,
-              }}>
-              {/* Label */}
-              <span className="text-xs font-bold uppercase tracking-widest"
-                style={{ color: playWarn ? '#ef4444' : `${SHOT_AMBER}99` }}>
-                Play Clock
-              </span>
-
-              {/* Large amber number */}
-              <div className="font-black font-mono leading-none"
+        {/* Quarter selector — right */}
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl px-4 py-3 shrink-0"
+          style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+          <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Quarter</span>
+          <div className="flex flex-col gap-1">
+            {QUARTERS.map((q,i) => (
+              <button key={q}
+                onClick={() => { setQuarter(i); setGameSecs(15*60); setGameRun(false) }}
+                className="px-5 py-1.5 rounded-lg text-xs font-bold transition-all"
                 style={{
-                  fontSize: 'clamp(3rem, 8vw, 4.5rem)',
-                  color: playWarn ? '#ef4444' : SHOT_AMBER,
-                  fontVariantNumeric: 'tabular-nums',
+                  backgroundColor: quarter===i ? `${orgColor}22` : '#1a0000',
+                  border:          `1px solid ${quarter===i ? orgColor : '#2a0000'}`,
+                  color:           quarter===i ? orgColor : '#9a8080',
                 }}>
-                {pad(playSecs)}
-              </div>
-
-              {/* +/- nudge */}
-              <div className="flex items-center gap-2">
-                <button onClick={() => { setPlayRun(false); setPlaySecs(s => Math.max(0, s - 1)) }}
-                  className="w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center"
-                  style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}88` }}>−</button>
-                <button onClick={() => { setPlayRun(false); setPlaySecs(s => Math.min(60, s + 1)) }}
-                  className="w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center"
-                  style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}88` }}>+</button>
-              </div>
-
-              {/* Presets */}
-              <div className="flex flex-wrap gap-1.5 justify-center">
-                {[40, 25].map(p => (
-                  <button key={p} onClick={() => resetPlay(p)}
-                    className="px-2 py-1 rounded-lg text-xs font-bold transition-all"
-                    style={{
-                      backgroundColor: playPreset === p ? `${SHOT_AMBER}22` : '#1a0d00',
-                      border:          `1px solid ${playPreset === p ? SHOT_AMBER : '#3a2000'}`,
-                      color:           playPreset === p ? SHOT_AMBER : `${SHOT_AMBER}55`,
-                    }}>
-                    {p}s
-                  </button>
-                ))}
-                <button onClick={() => resetPlay(playPreset)}
-                  className="px-2 py-1 rounded-lg text-xs font-bold"
-                  style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}55` }}>
-                  Rst
-                </button>
-              </div>
-
-              {/* Play/Pause */}
-              <button
-                onClick={() => setPlayRun(r => !r)}
-                className="w-full py-2 rounded-xl text-sm font-bold"
-                style={{
-                  backgroundColor: playWarn ? '#ef444422' : `${SHOT_AMBER}22`,
-                  border: `1px solid ${playWarn ? '#ef4444' : SHOT_AMBER}`,
-                  color: playWarn ? '#ef4444' : SHOT_AMBER,
-                }}>
-                {playRun ? '⏸ Pause' : '▶ Start'}
+                {q}
               </button>
-            </div>
-          )
-        })()}
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* ── ROW 2: Game clock presets + Start/Reset ── */}
@@ -400,29 +363,76 @@ function FootballScoreboard({ orgColor }) {
         ))}
       </div>
 
-      {/* ── ROW 4: Situation stripe (Down / yds / Ball on) ── */}
-      <div className="shrink-0 flex items-center gap-3 flex-wrap rounded-2xl px-4 py-2.5"
-        style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
+      {/* ── ROW 4: Play clock stripe ── */}
+      {(() => {
+        const playWarn = playSecs <= 5
+        return (
+          <div className="shrink-0 flex items-center gap-4 flex-wrap rounded-2xl px-4 py-2.5"
+            style={{
+              backgroundColor: '#0d0800',
+              border: `2px solid ${playWarn ? '#ef4444' : SHOT_AMBER}44`,
+              boxShadow: playWarn ? '0 0 16px #ef444433' : `0 0 16px ${SHOT_AMBER}22`,
+            }}>
 
-        {/* Down buttons */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-xs uppercase tracking-widest" style={{ color: '#4a2020' }}>Down</span>
-          {DOWNS.map((d,i) => (
-            <button key={d} onClick={() => setDown(i)}
-              className="w-11 h-9 rounded-lg text-xs font-bold transition-all"
+            <span className="text-xs font-bold uppercase tracking-widest shrink-0"
+              style={{ color: playWarn ? '#ef4444' : `${SHOT_AMBER}99` }}>
+              Play Clock
+            </span>
+
+            {/* Large amber number */}
+            <div className="font-black font-mono leading-none shrink-0"
               style={{
-                backgroundColor: down===i ? orgColor : '#1a0000',
-                border:          `1px solid ${down===i ? orgColor : '#2a0000'}`,
-                color:           down===i ? '#fff' : '#9a8080',
+                fontSize: 'clamp(1.75rem, 4vw, 2.75rem)',
+                color: playWarn ? '#ef4444' : SHOT_AMBER,
+                fontVariantNumeric: 'tabular-nums',
               }}>
-              {d}
-            </button>
-          ))}
-        </div>
+              {pad(playSecs)}
+            </div>
 
-        <PlusMinusRow label="& yds" value={distance} onChange={setDistance} min={1} max={99} />
-        <PlusMinusRow label="Ball on" value={ballOn}  onChange={setBallOn}  min={1} max={99} />
-      </div>
+            {/* +/- nudge */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button onClick={() => { setPlayRun(false); setPlaySecs(s => Math.max(0, s - 1)) }}
+                className="w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center"
+                style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}88` }}>−</button>
+              <button onClick={() => { setPlayRun(false); setPlaySecs(s => Math.min(60, s + 1)) }}
+                className="w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center"
+                style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}88` }}>+</button>
+            </div>
+
+            {/* Presets */}
+            <div className="flex gap-1.5 shrink-0">
+              {[40, 25].map(p => (
+                <button key={p} onClick={() => resetPlay(p)}
+                  className="px-2 py-1 rounded-lg text-xs font-bold transition-all"
+                  style={{
+                    backgroundColor: playPreset === p ? `${SHOT_AMBER}22` : '#1a0d00',
+                    border:          `1px solid ${playPreset === p ? SHOT_AMBER : '#3a2000'}`,
+                    color:           playPreset === p ? SHOT_AMBER : `${SHOT_AMBER}55`,
+                  }}>
+                  {p}s
+                </button>
+              ))}
+              <button onClick={() => resetPlay(playPreset)}
+                className="px-2 py-1 rounded-lg text-xs font-bold"
+                style={{ border: '1px solid #3a2000', color: `${SHOT_AMBER}55` }}>
+                Rst
+              </button>
+            </div>
+
+            {/* Play/Pause */}
+            <button
+              onClick={() => setPlayRun(r => !r)}
+              className="px-5 py-2 rounded-xl text-sm font-bold shrink-0"
+              style={{
+                backgroundColor: playWarn ? '#ef444422' : `${SHOT_AMBER}22`,
+                border: `1px solid ${playWarn ? '#ef4444' : SHOT_AMBER}`,
+                color: playWarn ? '#ef4444' : SHOT_AMBER,
+              }}>
+              {playRun ? '⏸ Pause' : '▶ Start'}
+            </button>
+          </div>
+        )
+      })()}
 
     </div>
   )
