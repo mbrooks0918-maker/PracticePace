@@ -527,7 +527,13 @@ export default function Dashboard() {
           )}
 
           {section === 'scoreboard' && (
-            <ScoreboardSection orgColor={orgColor} />
+            <ScoreboardSection
+                orgColor={orgColor}
+                accountId={subscription?.id ?? null}
+                homeTeamName={subscription?.home_team_name ?? null}
+                awayTeamName={subscription?.away_team_name ?? null}
+                programName={org?.name ?? null}
+              />
           )}
 
           {section === 'video' && (
