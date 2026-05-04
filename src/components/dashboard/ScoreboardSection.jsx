@@ -290,77 +290,135 @@ function FootballScoreboard({ orgColor, accountId, homeTeamName, awayTeamName, p
       {/* ══ MAIN AREA: three equal-height columns ══════════════════════════════ */}
       <div className="flex-1 flex gap-3 min-h-0">
 
-        {/* ── LEFT: Down & Distance & Ball On ─────────────────────────────── */}
-        <div className="flex-1 flex flex-col gap-3 rounded-2xl px-4 py-4"
+        {/* ── LEFT: Down / To Go / Ball On — LED scoreboard style ─────────── */}
+        <div className="flex-1 flex flex-col rounded-2xl overflow-hidden"
           style={{ backgroundColor: '#110000', border: '1px solid #2a0000' }}>
 
-          {/* DOWN pills */}
-          <div className="shrink-0 flex flex-col gap-2">
-            <span className="text-xs font-bold uppercase tracking-widest text-center"
-              style={{ color: '#5a2828' }}>Down</span>
-            <div className="flex gap-1.5">
-              {DOWNS.map((d, i) => (
-                <button
-                  key={d}
-                  onClick={() => setDown(i)}
-                  className="flex-1 rounded-xl font-black text-sm transition-all"
-                  style={{
-                    minHeight: 52,
-                    backgroundColor: down === i ? orgColor        : '#1a0000',
-                    border:          `2px solid ${down === i ? orgColor : '#2a0000'}`,
-                    color:           down === i ? '#fff'           : '#6a4040',
-                  }}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
+          {/* ROW 1: DOWN — tap digit to cycle 1 → 2 → 3 → 4 → 1 */}
+          <div className="flex-1 flex items-center px-5 relative"
+            style={{ borderBottom: '1px solid #2a0000' }}>
+            <button
+              onClick={() => setDown(d => (d + 1) % 4)}
+              style={{
+                fontFamily:         '"Courier New", "Roboto Mono", monospace',
+                fontSize:           'clamp(5rem, 10vw, 7rem)',
+                fontWeight:         700,
+                color:              PLAY_AMBER,
+                fontVariantNumeric: 'tabular-nums',
+                lineHeight:         1,
+                background:         'none',
+                border:             'none',
+                padding:            0,
+                cursor:             'pointer',
+                minWidth:           '1.1ch',
+                textAlign:          'center',
+                flexShrink:         0,
+              }}
+            >
+              {down + 1}
+            </button>
+            <span
+              style={{
+                marginLeft:    '1rem',
+                color:         '#ffffff',
+                fontSize:      'clamp(1.5rem, 2.75vw, 2.25rem)',
+                fontWeight:    500,
+                letterSpacing: '1px',
+                lineHeight:    1,
+                textTransform: 'uppercase',
+              }}
+            >
+              DOWN
+            </span>
           </div>
 
-          {/* & YDS */}
-          <div className="flex-1 flex flex-col items-center justify-center gap-1">
-            <span className="text-xs font-bold uppercase tracking-widest"
-              style={{ color: '#5a2828' }}>& Yds</span>
-            <div className="flex items-center gap-3">
+          {/* ROW 2: TO GO */}
+          <div className="flex-1 flex items-center px-5 relative"
+            style={{ borderBottom: '1px solid #2a0000' }}>
+            <span
+              style={{
+                fontFamily:         '"Courier New", "Roboto Mono", monospace',
+                fontSize:           'clamp(5rem, 10vw, 7rem)',
+                fontWeight:         700,
+                color:              PLAY_AMBER,
+                fontVariantNumeric: 'tabular-nums',
+                lineHeight:         1,
+                minWidth:           '2.2ch',
+                textAlign:          'right',
+                flexShrink:         0,
+              }}
+            >
+              {distance}
+            </span>
+            <span
+              style={{
+                marginLeft:    '1rem',
+                color:         '#ffffff',
+                fontSize:      'clamp(1.5rem, 2.75vw, 2.25rem)',
+                fontWeight:    500,
+                letterSpacing: '1px',
+                lineHeight:    1,
+                textTransform: 'uppercase',
+              }}
+            >
+              TO GO
+            </span>
+            {/* Small −/+ tucked in bottom-right corner */}
+            <div className="absolute bottom-2 right-3 flex gap-1">
               <button
                 onClick={() => setDistance(d => Math.max(1, d - 1))}
-                className="w-12 h-12 rounded-xl text-xl font-bold flex items-center justify-center"
-                style={{ border: '2px solid #2a0000', color: '#6a4040' }}
+                className="flex items-center justify-center rounded-lg font-bold"
+                style={{ width: 44, height: 44, border: '1px solid #2a0000', color: '#5a3030', fontSize: '1.1rem' }}
               >−</button>
-              <span
-                className="font-black font-mono text-white"
-                style={{ fontSize: 'clamp(4.5rem, 7.5vw, 6rem)', lineHeight: 1, fontVariantNumeric: 'tabular-nums', minWidth: '2ch', textAlign: 'center' }}
-              >
-                {distance}
-              </span>
               <button
                 onClick={() => setDistance(d => Math.min(99, d + 1))}
-                className="w-12 h-12 rounded-xl text-xl font-bold flex items-center justify-center"
-                style={{ border: '2px solid #2a0000', color: '#6a4040' }}
+                className="flex items-center justify-center rounded-lg font-bold"
+                style={{ width: 44, height: 44, border: '1px solid #2a0000', color: '#5a3030', fontSize: '1.1rem' }}
               >+</button>
             </div>
           </div>
 
-          {/* BALL ON */}
-          <div className="flex-1 flex flex-col items-center justify-center gap-1">
-            <span className="text-xs font-bold uppercase tracking-widest"
-              style={{ color: '#5a2828' }}>Ball On</span>
-            <div className="flex items-center gap-3">
+          {/* ROW 3: BALL ON */}
+          <div className="flex-1 flex items-center px-5 relative">
+            <span
+              style={{
+                fontFamily:         '"Courier New", "Roboto Mono", monospace',
+                fontSize:           'clamp(5rem, 10vw, 7rem)',
+                fontWeight:         700,
+                color:              PLAY_AMBER,
+                fontVariantNumeric: 'tabular-nums',
+                lineHeight:         1,
+                minWidth:           '2.2ch',
+                textAlign:          'right',
+                flexShrink:         0,
+              }}
+            >
+              {ballOn}
+            </span>
+            <span
+              style={{
+                marginLeft:    '1rem',
+                color:         '#ffffff',
+                fontSize:      'clamp(1.5rem, 2.75vw, 2.25rem)',
+                fontWeight:    500,
+                letterSpacing: '1px',
+                lineHeight:    1,
+                textTransform: 'uppercase',
+              }}
+            >
+              BALL ON
+            </span>
+            {/* Small −/+ tucked in bottom-right corner */}
+            <div className="absolute bottom-2 right-3 flex gap-1">
               <button
                 onClick={() => setBallOn(b => Math.max(1, b - 1))}
-                className="w-12 h-12 rounded-xl text-xl font-bold flex items-center justify-center"
-                style={{ border: '2px solid #2a0000', color: '#6a4040' }}
+                className="flex items-center justify-center rounded-lg font-bold"
+                style={{ width: 44, height: 44, border: '1px solid #2a0000', color: '#5a3030', fontSize: '1.1rem' }}
               >−</button>
-              <span
-                className="font-black font-mono text-white"
-                style={{ fontSize: 'clamp(4.5rem, 7.5vw, 6rem)', lineHeight: 1, fontVariantNumeric: 'tabular-nums', minWidth: '2ch', textAlign: 'center' }}
-              >
-                {ballOn}
-              </span>
               <button
                 onClick={() => setBallOn(b => Math.min(99, b + 1))}
-                className="w-12 h-12 rounded-xl text-xl font-bold flex items-center justify-center"
-                style={{ border: '2px solid #2a0000', color: '#6a4040' }}
+                className="flex items-center justify-center rounded-lg font-bold"
+                style={{ width: 44, height: 44, border: '1px solid #2a0000', color: '#5a3030', fontSize: '1.1rem' }}
               >+</button>
             </div>
           </div>
