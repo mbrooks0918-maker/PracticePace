@@ -196,7 +196,8 @@ function FootballScoreboard({ orgColor, accountId, homeTeamName, awayTeamName, p
   const [quarter, setQuarter]   = useState(0)
   const [down, setDown]         = useState(0)
   const [distance, setDistance] = useState(10)
-  const [ballOn, setBallOn]     = useState(25)
+  const [ballOn, setBallOn]         = useState(25)
+  const [editingBallOn, setEditingBallOn] = useState(false)
 
   // ── Score panels ─────────────────────────────────────────────────────────────
   const [homeScore, setHomeScore]       = useState(0)
@@ -380,21 +381,61 @@ function FootballScoreboard({ orgColor, accountId, homeTeamName, awayTeamName, p
 
           {/* ROW 3: BALL ON */}
           <div className="flex-1 flex items-center px-5 relative">
-            <span
-              style={{
-                fontFamily:         '"Courier New", "Roboto Mono", monospace',
-                fontSize:           'clamp(5rem, 10vw, 7rem)',
-                fontWeight:         700,
-                color:              PLAY_AMBER,
-                fontVariantNumeric: 'tabular-nums',
-                lineHeight:         1,
-                minWidth:           '2.2ch',
-                textAlign:          'right',
-                flexShrink:         0,
-              }}
-            >
-              {ballOn}
-            </span>
+            {editingBallOn ? (
+              <input
+                autoFocus
+                type="text"
+                inputMode="numeric"
+                defaultValue={String(ballOn)}
+                onFocus={e => e.target.select()}
+                onBlur={e => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!isNaN(v) && v >= 1 && v <= 99) setBallOn(v)
+                  setEditingBallOn(false)
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.currentTarget.blur() }
+                  if (e.key === 'Escape') setEditingBallOn(false)
+                }}
+                style={{
+                  fontFamily:         '"Courier New", "Roboto Mono", monospace',
+                  fontSize:           'clamp(5rem, 10vw, 7rem)',
+                  fontWeight:         700,
+                  color:              PLAY_AMBER,
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight:         1,
+                  width:              '2.5ch',
+                  textAlign:          'center',
+                  background:         'none',
+                  border:             'none',
+                  borderBottom:       `2px solid ${PLAY_AMBER}`,
+                  outline:            'none',
+                  flexShrink:         0,
+                  padding:            0,
+                }}
+              />
+            ) : (
+              <button
+                onClick={() => setEditingBallOn(true)}
+                style={{
+                  fontFamily:         '"Courier New", "Roboto Mono", monospace',
+                  fontSize:           'clamp(5rem, 10vw, 7rem)',
+                  fontWeight:         700,
+                  color:              PLAY_AMBER,
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight:         1,
+                  minWidth:           '2.2ch',
+                  textAlign:          'right',
+                  flexShrink:         0,
+                  background:         'none',
+                  border:             'none',
+                  padding:            0,
+                  cursor:             'text',
+                }}
+              >
+                {ballOn}
+              </button>
+            )}
             <span
               style={{
                 marginLeft:    '1rem',
