@@ -72,12 +72,12 @@ function GameClock({ secs, warn, running, onChange }) {
         onKeyDown={handleKey}
         className="font-mono font-black text-center rounded-xl px-3 outline-none"
         style={{
-          fontSize: 'clamp(3rem, 10vw, 7rem)',
+          fontSize: 'clamp(3rem, 11.5vw, 9rem)',
           color,
           backgroundColor: '#1a0000',
           border:          `2px solid ${color}`,
           fontVariantNumeric: 'tabular-nums',
-          width: 'clamp(200px, 28vw, 420px)',
+          width: 'clamp(200px, 35vw, 530px)',
         }}
       />
     )
@@ -89,7 +89,7 @@ function GameClock({ secs, warn, running, onChange }) {
       title={running ? undefined : 'Tap to set time'}
       className="font-mono font-black leading-none transition-opacity"
       style={{
-        fontSize:           'clamp(3rem, 10vw, 7rem)',
+        fontSize:           'clamp(3rem, 11.5vw, 9rem)',
         color,
         fontVariantNumeric: 'tabular-nums',
         cursor:             running ? 'default' : 'text',
