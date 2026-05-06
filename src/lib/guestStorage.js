@@ -44,7 +44,9 @@ export function deleteGuestScript(id) {
 }
 
 export function getGuestActiveId() {
-  return localStorage.getItem(ACTIVE_KEY) ?? null
+  const v = localStorage.getItem(ACTIVE_KEY) ?? null
+  console.log('[ACTIVE] localStorage read:', ACTIVE_KEY, '=', v, '(getGuestActiveId)')
+  return v
 }
 
 export function setGuestActiveId(id) {

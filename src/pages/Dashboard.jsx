@@ -54,7 +54,9 @@ const NAV = [
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { user, profile: authProfile, signOut } = useAuth()
+  console.log('[ACTIVE] Dashboard mount (component body running)')
+  const { user, profile: authProfile, signOut, loading: authLoading } = useAuth()
+  console.log('[ACTIVE] Dashboard render — user.id:', user?.id ?? null, 'isGuest:', user?.is_anonymous === true, 'authLoading:', authLoading, 'authProfile.id:', authProfile?.id ?? null)
   const navigate = useNavigate()
 
   // Anonymous Supabase users have is_anonymous === true
@@ -82,6 +84,13 @@ export default function Dashboard() {
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutError,   setCheckoutError]   = useState('')
   const [showPlanModal,   setShowPlanModal]   = useState(false)
+
+  // [ACTIVE-DEBUG] Mount/unmount logger so we can confirm if Dashboard is being
+  // unmounted-and-remounted (e.g. by ProtectedRoute flipping its `loading` flag).
+  useEffect(() => {
+    console.log('[ACTIVE] Dashboard mounted (useEffect [])')
+    return () => { console.log('[ACTIVE] Dashboard unmount (useEffect [] cleanup)') }
+  }, [])
 
   // Safety net: if loadAll() never finishes, force-unblock after 3 s
   useEffect(() => {
