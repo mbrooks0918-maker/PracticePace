@@ -6,6 +6,13 @@ import {
   setActiveScript,
   setAutoAdvance, setAllowOverrun, setHornOnEnd, setWhistleAt60,
 } from '../../lib/practiceTimer'
+import {
+  subscribe as subscribeAudio,
+  getSnapshot as getAudioSnapshot,
+  togglePlay as audioTogglePlay,
+  playNext as audioPlayNext,
+  playPrev as audioPlayPrev,
+} from '../../lib/audioPlayer'
 
 function pad(n) { return String(n).padStart(2, '0') }
 function fmt(s) { return `${pad(Math.floor(Math.abs(s) / 60))}:${pad(Math.abs(s) % 60)}` }
@@ -19,6 +26,83 @@ function clockColor(left, total) {
 }
 
 const TIME_PRESETS = [5, 10, 15, 20]
+
+// ── Music mini controls (bottom-left of practice tab) ───────────────────────
+// Compact prev / play-pause / next quick-reach controls. Wires straight into the
+// existing audioPlayer singleton — no new audio logic. Mini player bar elsewhere
+// is unaffected; this is just an additional surface for the same controls.
+const MusicPlayIcon  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+const MusicPauseIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+const MusicSkipBack  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+const MusicSkipFwd   = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+
+function MusicMiniControls({ orgColor }) {
+  const [snap, setSnap] = useState(() => getAudioSnapshot())
+  useEffect(() => {
+    return subscribeAudio((type, payload) => {
+      if (type === 'state') setSnap({ ...payload })
+    })
+  }, [])
+
+  const hasPlaylist = (snap.playlist?.length ?? 0) > 0
+  const isPlaying   = !!snap.isPlaying
+
+  const btnStyle = (disabled) => ({
+    backgroundColor: '#0d0800',
+    border:          `1px solid ${orgColor}33`,
+    color:           disabled ? '#3a2a1a' : '#e8d8c8',
+    opacity:         disabled ? 0.45 : 1,
+    cursor:          disabled ? 'not-allowed' : 'pointer',
+  })
+
+  return (
+    <div
+      // Bottom-left of the practice tab. Rendered as the last flex child of
+      // the inner column with self-start so it sits on the left edge.
+      className="shrink-0 self-start mt-1 flex items-center gap-2 rounded-2xl px-2 py-2"
+      style={{
+        backgroundColor: 'rgba(13,8,0,0.85)',
+        border:          `1px solid ${orgColor}22`,
+        backdropFilter:  'blur(6px)',
+      }}
+    >
+      <button
+        onClick={() => audioPlayPrev().catch(() => {})}
+        disabled={!hasPlaylist}
+        className="w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95"
+        style={btnStyle(!hasPlaylist)}
+        aria-label="Previous song"
+      >
+        <MusicSkipBack />
+      </button>
+      <button
+        onClick={() => audioTogglePlay().catch(() => {})}
+        disabled={!hasPlaylist}
+        className="w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95"
+        style={{
+          ...btnStyle(!hasPlaylist),
+          backgroundColor: hasPlaylist ? orgColor : '#0d0800',
+          color:           hasPlaylist ? '#fff' : '#3a2a1a',
+          border:          hasPlaylist ? `1px solid ${orgColor}` : `1px solid ${orgColor}33`,
+        }}
+        aria-label={isPlaying ? 'Pause' : 'Play'}
+      >
+        {isPlaying
+          ? <MusicPauseIcon />
+          : <span style={{ marginLeft: 2 }}><MusicPlayIcon /></span>}
+      </button>
+      <button
+        onClick={() => audioPlayNext().catch(() => {})}
+        disabled={!hasPlaylist}
+        className="w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95"
+        style={btnStyle(!hasPlaylist)}
+        aria-label="Next song"
+      >
+        <MusicSkipFwd />
+      </button>
+    </div>
+  )
+}
 
 // ── Toggle button ─────────────────────────────────────────────────────────────
 function ToggleBtn({ label, active, onColor = '#22c55e', onClick }) {
@@ -374,6 +458,9 @@ export default function PracticeSection({ activeScript, orgColor, backgroundUrl 
             onClick={() => setWhistleAt60(!whistleAt60)}
           />
         </div>
+
+        {/* ── Music quick-reach controls (bottom-left of practice tab) ────── */}
+        <MusicMiniControls orgColor={orgColor} />
 
       </div>
     </div>
