@@ -25,6 +25,9 @@ import {
   seedGuestIfEmpty,
 } from '../lib/guestStorage'
 
+// Per-user localStorage key for the last loaded script id
+const activeScriptKey = uid => `pp_active_script_${uid}`
+
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }
 const Ico = ({ children, size = 20 }) => <svg width={size} height={size} viewBox="0 0 24 24" {...S}>{children}</svg>
@@ -199,7 +202,13 @@ export default function Dashboard() {
           if (sample) {
             setScripts([sample])
             setActiveScript(sample)
+            try { localStorage.setItem(activeScriptKey(user.id), sample.id) } catch {}
           }
+        } else {
+          // Restore the last loaded script for this user, if it still exists
+          const savedId = (() => { try { return localStorage.getItem(activeScriptKey(user.id)) } catch { return null } })()
+          const restored = savedId ? list.find(s => s.id === savedId) : null
+          if (restored) setActiveScript(restored)
         }
 
         // Fetch account/subscription status from the accounts table.
@@ -353,7 +362,14 @@ export default function Dashboard() {
 
   function handleSetActive(script) {
     setActiveScript(script)
-    if (isGuest) setGuestActiveId(script?.id ?? null)
+    if (isGuest) {
+      setGuestActiveId(script?.id ?? null)
+    } else if (user?.id) {
+      try {
+        if (script?.id) localStorage.setItem(activeScriptKey(user.id), script.id)
+        else localStorage.removeItem(activeScriptKey(user.id))
+      } catch {}
+    }
     if (script) setSection('practice')
   }
 

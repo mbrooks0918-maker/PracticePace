@@ -446,9 +446,16 @@ function ScriptEditor({ script, orgId, userId, orgColor, isGuest, isActive,
   })
 
   // ── Load to Practice ────────────────────────────────────────────────────────
-  function loadToPractice() {
-    // Flush any pending save first
-    if (saveTimer.current) { clearTimeout(saveTimer.current); save(name, sport, drills) }
+  // Awaits any pending or first-time save so scriptId.current is real before
+  // we tell the parent to set this script active. Without the await, onSetActive
+  // gets passed { id: null }, which clears the persisted "last loaded" pointer.
+  async function loadToPractice() {
+    const hasPending = !!saveTimer.current
+    const isUnsaved  = !scriptId.current
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    if (hasPending || isUnsaved) {
+      await save(name, sport, drills)
+    }
     const scriptObj = { id: scriptId.current, name, sport, drills }
     onSetActive(scriptObj)
     if (onSwitchTab) onSwitchTab('practice')
