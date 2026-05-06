@@ -22,9 +22,18 @@ function savePrefs(patch) {
 // ── Text-to-speech ────────────────────────────────────────────────────────────
 // Voice is resolved once and cached.  On some browsers (Firefox, iOS Safari)
 // the voices list is empty until the 'voiceschanged' event fires.
+//
+// iOS Safari reliability fixes applied:
+//   • Re-resolve voice at speak-time if cache is still null (race at startup)
+//   • Both synchronous getVoices() AND onvoiceschanged listener registered
+//   • cancel() + 50 ms pause before speak() to clear stuck synth queue
+//   • Utterance held in module-level var to prevent GC mid-speech
+//   • Duck/restore calls wrapped in try/catch inside utterance handlers
+
 let _cachedVoice             = undefined   // undefined = unresolved, null = use browser default
 let _voicesChangedRegistered = false
-let _pendingSpeechTimer      = null        // setTimeout id for the 10-second announcement delay
+let _pendingSpeechTimer      = null        // setTimeout id for the 3-second announcement delay
+let _currentUtterance        = null        // held in module scope — prevents GC on iOS Safari
 
 // Voice priority: Daniel (iOS/macOS male) → Alex (macOS male) →
 //   any voice with "male" in name → any English → browser default
@@ -36,45 +45,66 @@ function _resolveVoice(voices) {
     ?? null
 }
 
-function _getEnglishVoice() {
-  if (_cachedVoice !== undefined) return _cachedVoice   // already resolved
+function _initVoices() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return
 
-  if (typeof window === 'undefined' || !window.speechSynthesis) return null
-
+  // Try synchronously first (Chromium, and sometimes iOS after first load)
   const voices = window.speechSynthesis.getVoices()
-
   if (voices.length > 0) {
-    // Voices available synchronously (Chromium)
     _cachedVoice = _resolveVoice(voices)
-    console.log('[PracticePace] TTS voice:', _cachedVoice?.name ?? '(browser default)')
-    return _cachedVoice
+    console.log('[TTS] selected voice:', _cachedVoice?.name ?? '(browser default)')
+    return
   }
 
-  // Voices not ready yet — register once and cache when they arrive
+  // Also register onvoiceschanged — some browsers only fire the event, not sync
   if (!_voicesChangedRegistered) {
     _voicesChangedRegistered = true
     window.speechSynthesis.onvoiceschanged = () => {
-      _cachedVoice = _resolveVoice(window.speechSynthesis.getVoices())
-      console.log('[PracticePace] TTS voice:', _cachedVoice?.name ?? '(browser default)')
+      const v = window.speechSynthesis.getVoices()
+      console.log('[TTS] voiceschanged fired,', v.length, 'voices available')
+      _cachedVoice = _resolveVoice(v)
+      console.log('[TTS] selected voice:', _cachedVoice?.name ?? '(browser default)')
       window.speechSynthesis.onvoiceschanged = null
     }
   }
-  return null   // browser will use its built-in default for this utterance
+}
+
+// Kick off voice resolution at module load
+_initVoices()
+
+function _getEnglishVoice() {
+  // If still undefined, try once more synchronously (voices may have loaded
+  // since module init without firing onvoiceschanged, e.g. on iOS after unlock)
+  if (_cachedVoice === undefined) {
+    const voices = window.speechSynthesis?.getVoices() ?? []
+    if (voices.length > 0) {
+      _cachedVoice = _resolveVoice(voices)
+      console.log('[TTS] selected voice (late resolve):', _cachedVoice?.name ?? '(browser default)')
+    } else {
+      // Still not ready — fall back to null (browser picks default)
+      return null
+    }
+  }
+  return _cachedVoice   // may be null — that's fine, means browser default
 }
 
 /**
  * Speak the announcement immediately.
  * The music duck is a fresh independent duck — by the time this runs
- * (10 s after the horn), the horn's 3-second duck has long since restored.
+ * (3 s after the horn), the horn's 3-second duck has just about restored.
  */
 function speakDrillName(name) {
   if (!name) return
   if (typeof window === 'undefined' || !window.speechSynthesis) return
 
-  // Cancel any previously queued utterance (rapid double-advance guard)
+  const text = `Next up. ${name}.`
+  console.log('[TTS] 3s elapsed, calling speak() with:', text)
+
+  // Step 1: cancel any stuck synth state (iOS Safari can get wedged)
   window.speechSynthesis.cancel()
 
-  const utterance  = new SpeechSynthesisUtterance(`Next up. ${name}.`)
+  // Step 2: build utterance and hold a module-level reference (prevents GC on iOS)
+  const utterance  = new SpeechSynthesisUtterance(text)
   utterance.rate   = 0.95   // slightly slower — authoritative, easier to hear at distance
   utterance.pitch  = 0.9    // slightly lower — sounds more masculine on most voices
   utterance.volume = 1.0
@@ -83,29 +113,48 @@ function speakDrillName(name) {
   if (voice) utterance.voice = voice
 
   // Fresh duck for the utterance — independent of the horn duck
-  utterance.onstart = () => duckNow()
-  utterance.onend   = () => releaseDuck()
-  utterance.onerror = () => releaseDuck()
+  utterance.onstart = () => {
+    console.log('[TTS] utterance.onstart fired')
+    try { duckNow() } catch (e) { console.warn('[TTS] duckNow error:', e) }
+  }
+  utterance.onend = () => {
+    console.log('[TTS] utterance.onend fired')
+    _currentUtterance = null
+    try { releaseDuck() } catch (e) { console.warn('[TTS] releaseDuck error:', e) }
+  }
+  utterance.onerror = (e) => {
+    console.log('[TTS] utterance.onerror fired:', e?.error ?? e)
+    _currentUtterance = null
+    try { releaseDuck() } catch (err) { console.warn('[TTS] releaseDuck error:', err) }
+  }
 
-  window.speechSynthesis.speak(utterance)
+  _currentUtterance = utterance
+
+  // Step 3: tiny delay after cancel() so iOS actually clears the queue
+  setTimeout(() => { window.speechSynthesis.speak(utterance) }, 50)
 }
 
 /**
- * Cancel any pending announcement and schedule a new one 10 s from now.
+ * Cancel any pending announcement and schedule a new one 3 s from now.
  * Storing the timer id lets us cancel if the coach manually advances,
  * resets, or pauses before the announcement fires.
  */
 function _scheduleSpeech(name) {
   if (_pendingSpeechTimer) { clearTimeout(_pendingSpeechTimer); _pendingSpeechTimer = null }
+  console.log('[TTS] drill ended, scheduling announcement in 3s for:', name)
   _pendingSpeechTimer = setTimeout(() => {
     _pendingSpeechTimer = null
     speakDrillName(name)
-  }, 10000)
+  }, 3000)
 }
 
 /** Cancel any pending announcement (no-op if none is pending). */
 function _cancelSpeech() {
-  if (_pendingSpeechTimer) { clearTimeout(_pendingSpeechTimer); _pendingSpeechTimer = null }
+  if (_pendingSpeechTimer) {
+    console.log('[TTS] cancelling pending announcement (manual next or stop)')
+    clearTimeout(_pendingSpeechTimer)
+    _pendingSpeechTimer = null
+  }
 }
 
 // Also pull from getAutoSounds() so horn/whistle toggles stay in sync with
